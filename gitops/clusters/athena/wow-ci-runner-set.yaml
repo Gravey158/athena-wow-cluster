@@ -20,6 +20,13 @@ spec:
         githubConfigUrl: "https://github.com/Gravey158/athena-wow-cluster"
         githubConfigSecret: arc-github-pat
 
+        # Controller SA discovery via `{{ lookup }}` fails in ArgoCD (no cluster
+        # access during helm-template render). Set explicit -- matches the
+        # arc-controller release's fullnameOverride: arc in arc-controller.yaml.
+        controllerServiceAccount:
+          namespace: arc-systems
+          name: arc
+
         runnerScaleSetName: "wow-cluster"
 
         # Lifecycle: ephemeral (1 job = 1 pod = 1 fresh container).
