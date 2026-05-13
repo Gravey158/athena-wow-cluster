@@ -3,7 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -139,11 +144,35 @@ func main() {
 		log.Fatal().Err(err).Msg("can't listen to friends events-broadcaster")
 	}
 
+	// B67: gateway previously had no SIGTERM handler at all. mainContext
+	// drives the charsUpdsBarrier ticker, the RealmNamesService init,
+	// and every per-connection ListenAndProcess (which now propagates
+	// cancellation into the GameSocket via B54's watcher goroutine).
+	// The signal handler closes the listening socket so the Accept loop
+	// unblocks, then cancels mainContext so all in-flight sessions
+	// drain their sends and exit.
+	mainContext, mainCancel := context.WithCancel(context.Background())
+	defer mainCancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		sig := <-sigCh
+		fmt.Println("")
+		log.Info().Msgf("🧨 Got signal %v, attempting graceful shutdown...", sig)
+		mainCancel()
+		// Closing the listener unblocks the Accept loop.
+		_ = l.Close()
+	}()
+
 	producer := events.NewGatewayProducerNatsJSON(nc, root.Ver, root.RealmID, root.RetrievedGatewayID)
 	charsUpdsBarrier := service.NewCharactersUpdatesBarrier(&log.Logger, producer, time.Second)
-	go charsUpdsBarrier.Run(context.TODO())
+	go charsUpdsBarrier.Run(mainContext)
 
-	realmNamesServive, err := service.NewRealmNamesService(context.Background(), repo.NewRealmNamesMySQLRepo(authDB))
+	realmNamesServive, err := service.NewRealmNamesService(mainContext, repo.NewRealmNamesMySQLRepo(authDB))
 	if err != nil {
 		log.Fatal().Err(err).Msg("can't create realm names service")
 	}
@@ -155,6 +184,10 @@ func main() {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
+			if mainContext.Err() != nil {
+				log.Info().Msg("👍 Gateway stopped accepting; shutdown.")
+				break
+			}
 			log.Fatal().Err(err).Msg("can't accept connection")
 		}
 
@@ -184,10 +217,15 @@ func main() {
 			healthandmetrics.ActiveConnectionsMetrics.Inc()
 			defer healthandmetrics.ActiveConnectionsMetrics.Dec()
 
-			// blocks until connection close
-			s.ListenAndProcess(context.Background())
+			// B67: parent ctx is the process mainContext; B54's GameSocket
+			// watcher goroutine fires s.cancel() when mainContext cancels,
+			// which unblocks any pending Send via SendOrCancel.
+			s.ListenAndProcess(mainContext)
 		}()
 	}
+
+	wg.Wait()
+	log.Info().Msg("👍 Gateway successfully stopped.")
 }
 
 func charService(cnf *config.Config) pbChar.CharactersServiceClient {
