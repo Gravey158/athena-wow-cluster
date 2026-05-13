@@ -178,24 +178,32 @@ func (g *groupsCacheInMem) GetInviteByInvitedPlayer(ctx context.Context, realmID
 }
 
 func (g *groupsCacheInMem) HandleCharacterLoggedIn(payload events.GWEventCharacterLoggedInPayload) error {
-	member := g.groupMemberByGUID(payload.RealmID, payload.CharGUID)
+	// B47: previously this took the RLock via groupMemberByGUID, released
+	// it, then mutated *member -- a data race with any other writer of
+	// the same member (and any reader of member.IsOnline that ran without
+	// the lock, of which there are many in the service layer). Keep the
+	// (write) lock held across the lookup AND the write. The guildserver
+	// equivalent already follows this pattern.
+	g.cacheLock.Lock()
+	defer g.cacheLock.Unlock()
+	member := g.groupMembersCache[payload.RealmID][payload.CharGUID]
 	if member == nil {
 		return nil
 	}
 
 	member.IsOnline = true
-
 	return nil
 }
 
 func (g *groupsCacheInMem) HandleCharacterLoggedOut(payload events.GWEventCharacterLoggedOutPayload) error {
-	member := g.groupMemberByGUID(payload.RealmID, payload.CharGUID)
+	g.cacheLock.Lock()
+	defer g.cacheLock.Unlock()
+	member := g.groupMembersCache[payload.RealmID][payload.CharGUID]
 	if member == nil {
 		return nil
 	}
 
 	member.IsOnline = false
-
 	return nil
 }
 
