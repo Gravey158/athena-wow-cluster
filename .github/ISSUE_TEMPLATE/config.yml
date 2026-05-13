@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Upstream ToCloud9 issues
+    url: https://github.com/walkline/ToCloud9/issues
+    about: For issues that affect upstream ToCloud9 (not the hardfork). Cross-link your hardfork issue if relevant.

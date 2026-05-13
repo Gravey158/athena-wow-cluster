@@ -1,0 +1,21 @@
+athena-wow-cluster
+==================
+
+This project is a hardfork of:
+
+  ToCloud9 (https://github.com/walkline/ToCloud9)
+    MIT License, Copyright 2021 walkline
+    See LICENSE for the MIT terms applying to the inherited code.
+
+Integrations:
+
+  AzerothCore (https://github.com/azerothcore/azerothcore-wotlk)
+    AGPL-3.0 License.
+    Patches under game-server/ reference and modify AzerothCore source code,
+    used in compliance with AGPL terms.
+
+  NATS, MariaDB, Redis, Bitnami Helm charts -- see chart/Chart.yaml for
+  dependency declarations and respective upstream licenses.
+
+Modifications and additions by Gravey158 (Athena WoW project) are licensed
+under the MIT License unless explicitly stated otherwise.

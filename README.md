@@ -1,90 +1,58 @@
-# ToCloud9
+# athena-wow-cluster
 
-**ToCloud9** provides a variety of microservices that operate alongside AzerothCore/TrinityCore and enable clustering support, making the system scalable and highly available.
+Kubernetes-native WoW 3.3.5a cross-realm cluster for the Athena Talos cluster.
+Hardfork of [walkline/ToCloud9](https://github.com/walkline/ToCloud9) (MIT).
 
-## Architecture
-The primary concept underlying the current architecture is to enhance the scalability of TrinityCore/AzerothCore with minimal modifications on their end.
+## What this is
 
-To fulfill these objectives, a game-load-balancer microservice has been developed.
-Functioning akin to an API Gateway, the game-load-balancer analyzes packets and strategically routes them to the Gameserver or generates requests to other services for handling.
+ToCloud9's microservice architecture (authserver, game-load-balancer, n× worldserver,
+chat / mail / guild / AH / social services) deployed on the Athena Talos K8s cluster,
+backed by a Gravey158 AzerothCore fork (MariaDB source-switch) integrated via the
+inherited `game-server/` hooks.
 
-The simplified architecture described below.
+Goal: cross-realm BGs / arena / AH / global-channels for <1000 concurrent players on
+commodity hardware (i3-7100T mini-PCs).
 
-![](.github/images/tc9.svg "architecture")
+Non-goal: 10k+ players, multi-expansion (Cata / MoP), upstream-PR pressure.
 
-If you'd like to read more, you can take a look at the pillars that form the foundation of ToCloud9 **[here](https://github.com/azerothcore/azerothcore-wotlk/discussions/16748)**.
+## Status
 
-## Current state
-Currently, it is possible to play the game, but some functionalities still do not support a distributed architecture (clustering). Here is a list of features/tasks that, once completed, will enable it to replace the widely used unscalable monolith (vanilla TrinityCore/AzerothCore). The status is relevant for integration with AzerothCore.
+**Phase 0 — Reproducible K8s baseline.**
+The project goal lives in `.claude/goals/athena-wow-cluster.md` (machine-local, not in git).
+`docs/baseline.md` will document current setup state (Phase 0.7).
 
-| Feature/Task 	                                                | Status	 |                                                                                                            Comment 	                                                                                                             |
-|---------------------------------------------------------------|---------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
-| Gameservers and other services discovery                      | ✅       |                                                                                                                	                                                                                                                 |
-| Services communication with NATS and gRPC                     | ✅	      |                                                                                                                	                                                                                                                 |
-| Redirect players from one gameserver to another on map change | ✅	      |                                                                                                                	                                                                                                                 |
-| Gameservers crash recovery                                    | ✅	      |                                                                              Players would be redirected <br/>to the another available gameserver	                                                                               |
-| Automatic load balancing maps between gameservers             | ✅	      |                                                                                                                	                                                                                                                 |
-| Shared pool of GUIDs                                          | ✅	      |                                                                                             Sharing Players, Items, Instance GUIDs	                                                                                              |
-| "Who" opcode handling                                         | ✅	      |                                                                                                                	                                                                                                                 |
-| Whispering in cluster support                                 | ✅	      |                                                                                                                	                                                                                                                 |
-| Guilds in cluster support                                     | 90%	    |                                                                              Guild creation functionality is missing                              	                                                                              |
-| Guild bank in cluster support                                 | 0%	     |                                                                                                                	                                                                                                                 |
-| Mail in cluster support                                       | ✅	      |                                                                                                                	                                                                                                                 |
-| Auction house in cluster support                              | 0%	     |                                                                                                                	                                                                                                                 |
-| Friends list in cluster support                               | ✅	      |                                                                                                                	                                                                                                                 |
-| Global channels in cluster support                            | ✅	      |                                                                                                                	                                                                                                                 |
-| Parties and raids in cluster support                          | 80%	    | **Not implemented:** <br/>ready checks, instances reset on player request, <br/>prolonging instance bind, <br/>moving raid members between groups, <br/>and updating group members state <br/>like health when on different maps |
-| Battlegrounds in cluster support                              | ✅	      |                                                                                                                	                                                                                                                 |
-| Battlegrounds cross-realm support                             | ✅	      |                                                                                                                	                                                                                                                 |
-| Arenas in cluster support                                     | 0%	     |                                                                                                                	                                                                                                                 |
-| LFG in cluster support                                        | 0%	     |                                                                                                                	                                                                                                                 |
-| Sync transports between gameservers                           | ✅	      |                                                                                                                	                                                                                                                 |
-| Helm chart support                                            | ✅	      |                                                                                                                	                                                                                                                 |
+## Layout
 
-## Deployment
+| Path | Origin | Purpose |
+|---|---|---|
+| `apps/`, `api/`, `gen/`, `shared/`, `sql/` | ToCloud9 | Go microservices, gRPC stubs, shared libs, DB migrations |
+| `game-server/` | ToCloud9 | AzerothCore C++ integration patches |
+| `chart/` | ToCloud9 (adapted) | Helm chart for K8s deployment |
+| `docker-compose.yaml` | ToCloud9 | Local single-service iteration (NOT the Phase 0 baseline) |
+| `docs/` | new | Project docs; `docs/adr/` for architecture decisions |
+| `ops/` | new | Operational helpers (DB init, realmlist hacks, secret seeds) |
+| `scripts/` | new | Maintenance scripts |
+| `e2e/` | new | End-to-end tests (skeleton, Phase 5) |
+| `.github/` | mixed | CI workflows (inherited) + issue / PR templates (new) |
 
-### Kubernetes Cluster
+## Upstream tracking
 
-Utilize the [helm chart](chart/) to seamlessly deploy the solution in your Kubernetes cluster. Kudos to [@2o1o0](https://github.com/2o1o0) for the solution.
+This is a hardfork, **not** a GitHub fork — no "Open PR upstream" UI pressure.
 
-### Docker Compose
-
-__Prerequisites:__
-* [Docker & Docker Compose](https://www.docker.com/products/docker-desktop) (for 'Docker Compose' approach);
-
-__Steps:__
-1. Fill in `.env` file with relevant data.
-2. Start the setup containers with:
-
-```bash
-$ docker compose --profile setup-ac up -d
 ```
-3. Wait until all setup containers (except the database) have stopped, then bring everything down safely:
-
-```bash
-$ docker compose down
-```
-4. Start the server normally:
-
-```bash
-$ docker compose --profile ac up -d
+$ git remote -v
+origin    https://github.com/Gravey158/athena-wow-cluster.git  (fetch)
+origin    https://github.com/Gravey158/athena-wow-cluster.git  (push)
+upstream  https://github.com/walkline/ToCloud9.git             (fetch)
+upstream  DISABLED_no_pushes_to_upstream                       (push)
 ```
 
-> [!NOTE]
-> There's an default admin account included with the credentials `admin:admin`, be sure to change the password
-
-### Without Docker/Orchestration
-
-For Windows & AzerothCore [use this guide](doc/RunNonDockerWinWSLAzerothCore.md).
-
-For Linux and Mac - TBD.
-
-You can utilise [Perun tool](https://github.com/walkline/ToCloud9/tree/master/apps/perun) to simplify managing of all apps/microservices.  
-
-## Community
-
-We have the next [Discord channel](https://discord.gg/QxfBD9uGbN) where you can ask any questions and share your feedback.
+Selective cherry-picks from upstream are documented per-commit. See
+[`docs/adr/001-hardfork-mode.md`](docs/adr/001-hardfork-mode.md) for the rationale.
 
 ## License
 
-See [LICENSE](LICENSE).
+- ToCloud9 code: MIT, Copyright 2021 walkline — preserved in `LICENSE`.
+- AzerothCore patches (`game-server/`): AGPL-3.0 (upstream license).
+- Project additions: MIT unless explicitly stated.
+- See `NOTICE` for attributions.
