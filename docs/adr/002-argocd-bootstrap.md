@@ -4,57 +4,42 @@ Date: 2026-05-13
 
 ## Status
 
-Proposed (decision pending; will become Accepted once user picks an option).
+Accepted
 
 ## Context
 
-The Athena cluster runs ArgoCD with the App-of-Apps pattern, all manifests sourced from `Gravey158/athena-cluster` (private). That repo's `CLAUDE.md` enforces hard constraints:
+The Athena cluster runs ArgoCD with the App-of-Apps pattern, all manifests sourced from `Gravey158/athena-cluster` (private). That repo's `CLAUDE.md` historically enforced:
 
 > Don't touch `infrastructure/*`, `apps/services/*`, `clusters/athena/*` outside `customers/` — cluster-level state.
 
-Our project `athena-wow-cluster` is a separate repo (`Gravey158/athena-wow-cluster`, public) holding its own manifests under `gitops/apps/<name>/` and ArgoCD Application resources under `gitops/clusters/athena/<name>.yaml`. We need to choose how those Applications get registered with ArgoCD on Athena without violating the touch restriction.
+The `customers/`-only constraint dates from when Athena was used as a paying-customer hosting platform. The cluster is now run as a private server (no new customers; only Tobi's streaming remains as a legacy production tenant that must keep working). The constraint is therefore obsolete for non-streaming additions.
 
-Three options:
+Three options were considered initially:
 
-### Option A: Manual one-time `kubectl apply`, then ArgoCD self-manages
+- **A**: Manual one-time `kubectl apply`, then a root `Application-of-Applications` in this repo. Zero touches in athena-cluster.
+- **B**: Pointer commit in `athena-cluster/customers/`. Misuses the customers/ semantic (now obsolete anyway).
+- **C**: Document a relaxation of the constraint in athena-cluster's CLAUDE.md.
 
-```bash
-kubectl apply -f gitops/clusters/athena/arc-controller.yaml
-kubectl apply -f gitops/clusters/athena/wow-ci-resources.yaml
-kubectl apply -f gitops/clusters/athena/wow-ci-runner-set.yaml
-# Each new Application added later requires another manual apply.
-```
+After user input, a fourth, simpler option was chosen:
 
-- **Pro**: zero touches to `athena-cluster` repo. Each new App in this project is one `kubectl apply`.
-- **Pro**: clean separation — ArgoCD Applications themselves are managed by the user (or via this repo's CI later) rather than by another repo's app-of-apps.
-- **Con**: not GitOps-managed at the App-resource level. If you forget to apply a new App, it doesn't exist on the cluster. Could be fixed by an `Application-of-Applications` Application in this repo that points to `gitops/clusters/athena/` itself (recursive sync). That single root App is the only manual `kubectl apply` ever needed.
-- **Con**: no central place in the cluster repo that lists "which apps run here".
-
-### Option B: Pointer commit in `athena-cluster/customers/`
-
-The athena-cluster CLAUDE.md leaves `customers/` as the only "free" subtree. We commit `athena-cluster/customers/athena-wow.yaml` — a single ArgoCD `Application` that points at `gitops/clusters/athena/` in this repo and recurses.
-
-- **Pro**: standard GitOps; one place lists all cluster apps.
-- **Con**: misuses the `customers/` namespace semantically (it's for paying-customer Stripe-provisioned workloads).
-- **Con**: requires a commit in the athena-cluster repo — the only one for this project, but it's a precedent.
-
-### Option C: Document a relaxation of the constraint
-
-Edit `athena-cluster/CLAUDE.md` to add an explicit exception for `clusters/athena/athena-wow-cluster.yaml`, then commit the pointer there normally.
-
-- **Pro**: most natural location, with the rest of the cluster's apps.
-- **Con**: changes the cluster repo's contract, requires care.
+- **D**: Commit the pointer directly in `athena-cluster/clusters/athena/athena-wow-cluster.yaml`, alongside every other cluster app. Add a one-line annotation to athena-cluster's CLAUDE.md noting that the customers-only constraint is obsolete for new private workloads.
 
 ## Decision
 
-**Pending.** User input required.
+**Option D.**
 
-Recommendation: **Option A, with a root App-of-Apps inside this repo.** Concrete shape:
+Implementation:
 
-- `gitops/clusters/athena/_root.yaml` — an ArgoCD `Application` whose source is `gitops/clusters/athena/` recursively, deploying every other `Application` resource there. Apply this *one* file manually; ArgoCD picks up every other Application from there.
-- New Applications are added to `gitops/clusters/athena/<name>.yaml` in regular commits. No more `kubectl apply` needed.
-- The `athena-cluster` repo and its constraints stay untouched.
+1. **In `athena-cluster/clusters/athena/argocd/athena-project.yaml`**: extend `spec.sourceRepos` with `https://github.com/Gravey158/athena-wow-cluster` so the `athena-cluster` AppProject can host the pointer Application.
+2. **In `athena-cluster/clusters/athena/athena-wow-cluster.yaml`** (new): an ArgoCD `Application` resource targeting `gitops/clusters/athena/` in our repo with `directory.recurse: true`. ArgoCD then automatically picks up every sub-`Application` we add there (`arc-controller`, `wow-ci-resources`, `wow-ci-runner-set`, future `mariadb-operator`, `wow-cluster`, etc.).
+3. **In `athena-cluster/CLAUDE.md`**: one-line annotation that the customers-only constraint is obsolete for new private workloads; `streaming/` and `infrastructure/` touches remain forbidden.
+
+The pointer Application uses `project: athena-cluster` (the same project as every other cluster app), now that its `sourceRepos` includes our repo.
 
 ## Consequences
 
-To be filled in once decided.
+- After the initial cross-repo commit, **no further manual `kubectl apply` is needed for this project**. New ArgoCD Applications in `athena-wow-cluster/gitops/clusters/athena/` are picked up automatically on the next sync.
+- The `athena-cluster` repo carries a single pointer file plus one CLAUDE.md line for this project. No further structural cross-repo touches.
+- `Streaming/` (Tobi's legacy production) and `infrastructure/*` remain untouched per athena-cluster CLAUDE.md.
+- If we ever fully sever the dependency, removing the three files in athena-cluster is a clean reverse.
+- Sealed-secret seeding (e.g. GitHub PAT for ARC) is still a one-time user action per `gitops/apps/wow-ci/SETUP.md`; ArgoCD picks it up after commit.
