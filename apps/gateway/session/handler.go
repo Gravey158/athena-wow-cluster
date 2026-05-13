@@ -165,6 +165,10 @@ func ForwardPacketToRandomGameServer(waitOpcodeToClose packet.Opcode) Handler {
 		// B5: buffered so the deferred send below never blocks if the conditional
 		// `<-waitDone` (when waitOpcodeToClose == 0) is skipped.
 		waitDone := make(chan struct{}, 1)
+		// B6 fix: signal channel for SMsgAuthResponse (same pattern as B10/B24).
+		// Replaces the magic 300ms sleep with an explicit wait for AC's
+		// WorldSession-ready signal.
+		authReady := make(chan struct{}, 1)
 		go func() {
 			defer cancel()
 			defer func() { waitDone <- struct{}{} }()
@@ -174,6 +178,15 @@ func ForwardPacketToRandomGameServer(waitOpcodeToClose packet.Opcode) Handler {
 				case p, open := <-socket.ReadChannel():
 					if !open {
 						return
+					}
+					if p.Opcode == packet.SMsgAuthResponse {
+						// Don't forward to client. Signal main flow to proceed
+						// with the actual packet.
+						select {
+						case authReady <- struct{}{}:
+						default:
+						}
+						continue
 					}
 					// B8: select-wrap so a dead client gamesocket doesn't block this goroutine.
 					select {
@@ -197,8 +210,12 @@ func ForwardPacketToRandomGameServer(waitOpcodeToClose packet.Opcode) Handler {
 
 		socket.SendPacket(s.authPacket)
 
-		// we need to give some time to add session on the world side
-		time.Sleep(time.Millisecond * 300)
+		// B6: wait for SMsgAuthResponse signal (was magic 300ms sleep).
+		select {
+		case <-authReady:
+		case <-newCtx.Done():
+			return fmt.Errorf("timeout waiting for worldserver auth response in ForwardPacketToRandomGameServer")
+		}
 
 		socket.SendPacket(p)
 
