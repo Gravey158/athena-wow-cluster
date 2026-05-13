@@ -28,11 +28,13 @@ spec:
         # Disable metrics until Phase 1 (we add ServiceMonitor then).
         metrics:
           enabled: false
-        # Webhook needs cert -- chart auto-provisions via cert-manager which we have.
+        # Webhook cert: use operator's built-in cert-controller (self-signed,
+        # auto-rotated). cert-manager integration is the alternative but
+        # requires an explicit issuerRef which the chart-default doesn't set.
         webhook:
           cert:
             certManager:
-              enabled: true
+              enabled: false
   destination:
     server: https://kubernetes.default.svc
     namespace: mariadb-operator

@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wow-redis-master
+  namespace: wow-cluster
+  annotations:
+    argocd.argoproj.io/sync-wave: "-8"
+  labels:
+    app: wow-redis-master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wow-redis-master
+  template:
+    metadata:
+      labels:
+        app: wow-redis-master
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          args: ["--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+          ports:
+            - containerPort: 6379
+              name: redis
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wow-redis-master
+  namespace: wow-cluster
+  annotations:
+    argocd.argoproj.io/sync-wave: "-8"
+spec:
+  type: ClusterIP
+  selector:
+    app: wow-redis-master
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379

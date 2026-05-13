@@ -20,22 +20,11 @@ spec:
 
   galera:
     enabled: true
-    primary:
-      podIndex: 0
-      automaticFailover: true
     sst: mariabackup
-    replicaThreads: 1
-    config:
-      reuseStorageVolume: false
-      volumeClaimTemplate:
-        accessModes: ["ReadWriteOnce"]
-        storageClassName: longhorn-nvme
-        resources:
-          requests:
-            storage: 5Gi
-    recovery:
-      enabled: true
-      minClusterSize: "1"
+    # primary election, replicaThreads, recovery -- use operator defaults.
+    # The 'primary' / 'recovery' / 'config' fields had schema changes between
+    # mariadb-operator versions; sticking with defaults keeps us compatible
+    # with future upgrades.
 
   myCnfConfigMapKeyRef:
     name: wow-galera-my-cnf
