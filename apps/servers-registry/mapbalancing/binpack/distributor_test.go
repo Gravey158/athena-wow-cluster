@@ -61,3 +61,26 @@ func Test_knapsackBalancer_Distribute(t *testing.T) {
 		})
 	}
 }
+
+// Regression test for the surplus-bins bug: when bin-packing produces more
+// bins than servers (high-weight maps), the prior implementation silently
+// dropped the maps in `packing[len(servers):]`. After fix, every map must
+// land somewhere across the servers.
+func Test_binpackBalancer_SurplusNoMapsDropped(t *testing.T) {
+	weights := MapsWeight{1: 1000, 2: 1000, 3: 1000, 4: 1000, 5: 1000}
+	servers := []repo.GameServer{{}, {}}
+	k := &binpackBalancer{weights: weights}
+
+	r := k.Distribute(servers)
+
+	seen := map[uint32]bool{}
+	for _, s := range r {
+		for _, mapID := range s.AssignedMapsToHandle {
+			seen[mapID] = true
+		}
+	}
+	for mapID := range weights {
+		assert.Truef(t, seen[mapID], "map %d was dropped by Distribute", mapID)
+	}
+	assert.Lenf(t, r, len(servers), "expected %d servers in result, got %d", len(servers), len(r))
+}
