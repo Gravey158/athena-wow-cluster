@@ -60,8 +60,9 @@ type GroupsService interface {
 	events.GWCharacterLoggedOutHandler
 }
 
-func NewGroupsService(r repo.GroupsRepo, charClient pb.CharactersServiceClient, ep events.GroupServiceProducer) GroupsService {
+func NewGroupsService(ctx context.Context, r repo.GroupsRepo, charClient pb.CharactersServiceClient, ep events.GroupServiceProducer) GroupsService {
 	return &groupServiceImpl{
+		ctx:        ctx,
 		r:          r,
 		ep:         ep,
 		charClient: charClient,
@@ -69,6 +70,12 @@ func NewGroupsService(r repo.GroupsRepo, charClient pb.CharactersServiceClient, 
 }
 
 type groupServiceImpl struct {
+	// ctx is the process-lifetime context. Used in NATS-driven
+	// HandleCharacterLoggedIn/Out paths, which previously called
+	// context.Background() for DB lookups -- so SIGTERM couldn't cancel
+	// an in-flight GroupIDByPlayer / GroupByID query. (B42)
+	ctx context.Context
+
 	r  repo.GroupsRepo
 	ep events.GroupServiceProducer
 
@@ -627,7 +634,7 @@ func (g groupServiceImpl) HandleCharacterLoggedOut(payload events.GWEventCharact
 }
 
 func (g groupServiceImpl) buildGroupMemberOnlineStatusChangedPayload(realmID uint32, player uint64) (*events.GroupEventGroupMemberOnlineStatusChangedPayload, error) {
-	groupID, err := g.GroupIDByPlayer(context.Background(), realmID, player)
+	groupID, err := g.GroupIDByPlayer(g.ctx, realmID, player)
 	if err != nil {
 		return nil, err
 	}
@@ -636,7 +643,7 @@ func (g groupServiceImpl) buildGroupMemberOnlineStatusChangedPayload(realmID uin
 		return nil, nil
 	}
 
-	group, err := g.GroupByID(context.Background(), realmID, groupID)
+	group, err := g.GroupByID(g.ctx, realmID, groupID)
 	if err != nil {
 		return nil, err
 	}

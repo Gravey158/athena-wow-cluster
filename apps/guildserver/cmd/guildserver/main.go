@@ -60,8 +60,15 @@ func main() {
 		log.Fatal().Err(err).Msg("can't listen for incoming connections")
 	}
 
+	// B43: process-lifetime context. Used by cache.Warmup at startup
+	// and any future ctx-aware shutdown path. Previously the Warmup
+	// hardcoded context.Background() so a long-running startup query
+	// couldn't be aborted by container kill.
+	mainContext, mainCancel := context.WithCancel(context.Background())
+	defer mainCancel()
+
 	grpcServer := grpc.NewServer()
-	guildServer := server.NewGuildServer(createGuildService(cfg, nc))
+	guildServer := server.NewGuildServer(createGuildService(mainContext, cfg, nc))
 	if cfg.LogLevel == zerolog.DebugLevel {
 		guildServer = server.NewGuildsDebugLoggerMiddleware(guildServer, log.Logger)
 	}
@@ -76,6 +83,7 @@ func main() {
 		sig := <-sigCh
 		fmt.Println("")
 		log.Info().Msgf("🧨 Got signal %v, attempting graceful shutdown...", sig)
+		mainCancel()
 		grpcServer.GracefulStop()
 		wg.Done()
 	}()
@@ -91,7 +99,7 @@ func main() {
 	log.Info().Msg("👍 Server successfully stopped.")
 }
 
-func createGuildService(cfg *config.Config, natsCon *nats.Conn) service.GuildService {
+func createGuildService(ctx context.Context, cfg *config.Config, natsCon *nats.Conn) service.GuildService {
 	charDB := shrepo.NewCharactersDB()
 	for realmID, connStr := range cfg.CharDBConnection {
 		cdb, err := sql.Open("mysql", connStr)
@@ -118,7 +126,7 @@ func createGuildService(cfg *config.Config, natsCon *nats.Conn) service.GuildSer
 		log.Fatal().Err(err).Msg("can't listen to gateway updates")
 	}
 
-	err = cache.Warmup(context.Background(), 1)
+	err = cache.Warmup(ctx, 1)
 	if err != nil {
 		log.Fatal().Err(err).Msg("can't warmup guilds cache")
 	}

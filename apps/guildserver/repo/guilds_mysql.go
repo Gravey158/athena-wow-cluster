@@ -127,7 +127,6 @@ LEFT JOIN characters c ON c.guid = gm.guid ORDER BY guildid ASC`)
 // Currently unused since we have cached version for this.
 func (g *guildsMySQLRepo) GuildByRealmAndID(ctx context.Context, realmID uint32, guildID uint64) (*Guild, error) {
 	panic("implement me")
-	return nil, nil
 }
 
 // AddGuildInvite links user invite to a specific guild.

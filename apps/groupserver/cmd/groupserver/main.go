@@ -61,8 +61,15 @@ func main() {
 		log.Fatal().Err(err).Msg("can't listen for incoming connections")
 	}
 
+	// B42: process-lifetime context for ctx-aware shutdown of the
+	// service. NATS-driven callbacks (HandleCharacterLoggedIn/Out)
+	// previously used context.Background() for DB lookups, so SIGTERM
+	// could not cancel them. mainCancel fires from the signal handler.
+	mainContext, mainCancel := context.WithCancel(context.Background())
+	defer mainCancel()
+
 	grpcServer := grpc.NewServer()
-	groupServer := server.NewGroupServer(createGroupService(cfg, nc))
+	groupServer := server.NewGroupServer(createGroupService(mainContext, cfg, nc))
 	if cfg.LogLevel == zerolog.DebugLevel {
 		groupServer = server.NewGroupsDebugLoggerMiddleware(groupServer, log.Logger)
 	}
@@ -77,6 +84,7 @@ func main() {
 		sig := <-sigCh
 		fmt.Println("")
 		log.Info().Msgf("🧨 Got signal %v, attempting graceful shutdown...", sig)
+		mainCancel()
 		grpcServer.GracefulStop()
 		wg.Done()
 	}()
@@ -92,7 +100,7 @@ func main() {
 	log.Info().Msg("👍 Server successfully stopped.")
 }
 
-func createGroupService(cfg *config.Config, natsCon *nats.Conn) service.GroupsService {
+func createGroupService(ctx context.Context, cfg *config.Config, natsCon *nats.Conn) service.GroupsService {
 	charDB := shrepo.NewCharactersDB()
 	for realmID, connStr := range cfg.CharDBConnection {
 		cdb, err := sql.Open("mysql", connStr)
@@ -115,14 +123,14 @@ func createGroupService(cfg *config.Config, natsCon *nats.Conn) service.GroupsSe
 		log.Fatal().Err(err).Msg("can't listen to gateway updates")
 	}
 
-	err = cache.Warmup(context.Background(), 1)
+	err = cache.Warmup(ctx, 1)
 	if err != nil {
 		log.Fatal().Err(err).Msg("can't warmup groups cache")
 	}
 
 	charClient := charService(cfg)
 
-	s := service.NewGroupsService(cache, charClient, events.NewGroupServiceProducerNatsJSON(natsCon, groupserver.Ver))
+	s := service.NewGroupsService(ctx, cache, charClient, events.NewGroupServiceProducerNatsJSON(natsCon, groupserver.Ver))
 
 	// TODO: combine this with consumer for cache
 	err = events.NewGatewayConsumer(
