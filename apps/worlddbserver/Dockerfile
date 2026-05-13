@@ -1,0 +1,19 @@
+FROM --platform=${BUILDPLATFORM} golang:1.23-alpine AS build
+
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /
+
+COPY . .
+
+RUN go mod download
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-w -s" /apps/worlddbserver/cmd/worlddbserver/main.go
+
+FROM alpine:3.19
+
+WORKDIR /
+
+COPY --from=build ./main ./worlddbserver
+
+ENTRYPOINT ["./worlddbserver"]

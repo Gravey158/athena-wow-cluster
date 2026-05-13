@@ -1,0 +1,99 @@
+syntax = "proto3";
+package v1;
+
+option go_package = "gen/worlddb/pb";
+
+// WorldDBService owns the static read-mostly world_db tables that today
+// every worldserver loads independently (creature_template, item_template,
+// gameobject_template, quest_template, spell_template, ...). Moving them
+// behind this service is the path described in ADR-007: it unlocks 1:1
+// Map=Pod scaling by collapsing the per-pod RAM duplicate.
+//
+// Phase 1 (POC, this proto): GetAllCreatureTemplates only. Streams the
+// full creature_template table; worldserver populates ObjectMgr from the
+// stream at boot in place of the current MySQL load. Same RAM footprint
+// per pod -- proves correctness end-to-end.
+//
+// Phase 2: add other static tables (item, gameobject, quest, ...).
+// Phase 3: add per-entry getters + LRU cache on worldserver side. Per-pod
+// RAM for these tables drops from ~750 MB to ~3 MB working set.
+service WorldDBService {
+  // GetAllCreatureTemplates streams every row from acore_world.creature_template
+  // exactly once. The server holds the table in-process, so this is a
+  // memory-to-network copy with no MySQL roundtrip per stream element.
+  rpc GetAllCreatureTemplates(GetAllCreatureTemplatesRequest)
+      returns (stream CreatureTemplate);
+}
+
+message GetAllCreatureTemplatesRequest {
+  // Api version pinning, same convention as other TC9 services.
+  string api = 1;
+}
+
+// CreatureTemplate mirrors a subset of acore_world.creature_template columns
+// that exist in the walkline AC fork @ f3d7356. POC carries the core fields
+// AC reads off ObjectMgr::LoadCreatureTemplates -- extend mechanically as
+// migration covers more code paths.
+//
+// Notable schema specifics in this fork:
+//   - No modelid1..4 columns (models are in creature_template_model join table)
+//   - No resistance/spell columns (in creature_template_resistance + _spell joins)
+//   - No trainer_* columns (in npc_trainer join)
+//   - Immunities are a single CreatureImmunitiesId (not bitmasks)
+//   - speed_swim/speed_flight/detection_range present (this fork adds them)
+message CreatureTemplate {
+  uint32 entry = 1;
+  uint32 difficulty_entry_1 = 2;
+  uint32 difficulty_entry_2 = 3;
+  uint32 difficulty_entry_3 = 4;
+  uint32 kill_credit_1 = 5;
+  uint32 kill_credit_2 = 6;
+  string name = 7;
+  string sub_name = 8;
+  string icon_name = 9;
+  uint32 gossip_menu_id = 10;
+  uint32 min_level = 11;
+  uint32 max_level = 12;
+  int32 exp = 13;
+  uint32 faction = 14;
+  uint32 npc_flag = 15;
+  float speed_walk = 16;
+  float speed_run = 17;
+  float speed_swim = 18;
+  float speed_flight = 19;
+  float detection_range = 20;
+  uint32 rank = 21;
+  int32 dmg_school = 22;
+  float damage_modifier = 23;
+  uint32 base_attack_time = 24;
+  uint32 range_attack_time = 25;
+  float base_variance = 26;
+  float range_variance = 27;
+  uint32 unit_class = 28;
+  uint32 unit_flags = 29;
+  uint32 unit_flags_2 = 30;
+  uint32 dynamic_flags = 31;
+  int32 family = 32;
+  uint32 type = 33;
+  uint32 type_flags = 34;
+  uint32 lootid = 35;
+  uint32 pickpocket_loot = 36;
+  uint32 skinning_loot = 37;
+  uint32 pet_spell_data_id = 38;
+  uint32 vehicle_id = 39;
+  uint32 min_gold = 40;
+  uint32 max_gold = 41;
+  string ai_name = 42;
+  uint32 movement_type = 43;
+  float hover_height = 44;
+  float health_modifier = 45;
+  float mana_modifier = 46;
+  float armor_modifier = 47;
+  float experience_modifier = 48;
+  uint32 racial_leader = 49;
+  uint32 movement_id = 50;
+  uint32 regen_health = 51;
+  int32 creature_immunities_id = 52;
+  uint32 flags_extra = 53;
+  string script_name = 54;
+}

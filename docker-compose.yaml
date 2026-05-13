@@ -292,6 +292,22 @@ services:
     profiles:
       - tc
 
+  worlddbserver:
+    build:
+      context: .
+      dockerfile: apps/worlddbserver/Dockerfile
+    depends_on:
+      database-ac:
+        condition: service_healthy
+    ports:
+      - "8993:8993"
+    environment:
+      PORT: 8993
+      WORLD_DB_CONNECTION: ${WORLD_DB_USER}:${WORLD_DB_PASS}@tcp(${WORLD_DB_HOST}:${WORLD_DB_PORT})/${WORLD_DB_NAME}
+      NATS_URL: nats://nats:4222
+    profiles:
+      - ac
+
   gameserver-ac:
     build:
       context: .
