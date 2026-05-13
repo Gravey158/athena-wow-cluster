@@ -112,24 +112,24 @@ func (s *GameSession) CreateCharacter(ctx context.Context, p *packet.Packet) err
 	newCtx, cancel := context.WithTimeout(s.ctx, time.Second*20)
 	defer cancel()
 
-	// B24 fix: signal channel for SMsgAuthResponse so we can replace the
-	// blind 300ms sleep with an explicit wait for AC's WorldSession-ready
-	// signal. Same approach as B10 in connectToGameServerWithAddress.
+	// B71 (regression fix for B24): cluster-mode AC does NOT send
+	// SMSG_AUTH_RESPONSE -- WorldSession.cpp:1505 gates it on
+	// !ClusterModeEnabled(). Wait for the initial SMsgAuthChallenge instead
+	// (the only packet AC emits on connection in cluster mode), then short
+	// sleep for the InitializeSessionCallback DB roundtrip.
 	authReady := make(chan struct{}, 1)
 	waitDone := make(chan struct{})
 	go func() {
 		defer func() { waitDone <- struct{}{} }()
-
+		signalled := false
 		for {
 			select {
 			case p, open := <-socket.ReadChannel():
 				if !open {
 					return
 				}
-				if p.Opcode == packet.SMsgAuthResponse {
-					// Signal main flow that worldserver is ready for CMsgCharCreate.
-					// Don't forward to client -- gateway sent its own auth response
-					// during the earlier client-side handshake.
+				if !signalled && (p.Opcode == packet.SMsgAuthChallenge || p.Opcode == packet.SMsgAuthResponse) {
+					signalled = true
 					select {
 					case authReady <- struct{}{}:
 					default:
@@ -156,14 +156,19 @@ func (s *GameSession) CreateCharacter(ctx context.Context, p *packet.Packet) err
 
 	socket.SendPacket(s.authPacket)
 
-	// B24: wait for SMsgAuthResponse instead of magic 300ms sleep.
-	// AC sends this from WorldSession::InitializeSessionCallback after the
-	// WorldSession has been fully added to the session manager.
 	select {
 	case <-authReady:
 	case <-newCtx.Done():
 		sendCreateFailed()
-		return fmt.Errorf("timeout waiting for worldserver auth response in CreateCharacter")
+		return fmt.Errorf("timeout waiting for worldserver initial packet in CreateCharacter")
+	}
+	// Short sleep approximating WorldSession::InitializeSession's async
+	// character-DB query holder load -- no deterministic ack in cluster mode.
+	select {
+	case <-time.After(200 * time.Millisecond):
+	case <-newCtx.Done():
+		sendCreateFailed()
+		return newCtx.Err()
 	}
 
 	socket.SendPacket(p)
@@ -212,20 +217,22 @@ func (s *GameSession) DeleteCharacter(ctx context.Context, p *packet.Packet) err
 	newCtx, cancel := context.WithTimeout(s.ctx, time.Second*5)
 	defer cancel()
 
-	// B24-cousin: same signal-channel pattern as CreateCharacter to replace
-	// the magic 300ms sleep with an explicit SMsgAuthResponse wait.
+	// B71-cousin (regression fix): see CreateCharacter for full rationale --
+	// cluster-mode AC suppresses SMsgAuthResponse, so we wait for the
+	// initial SMsgAuthChallenge and short-sleep instead.
 	authReady := make(chan struct{}, 1)
 	waitDone := make(chan struct{})
 	go func() {
 		defer func() { waitDone <- struct{}{} }()
-
+		signalled := false
 		for {
 			select {
 			case p, open := <-socket.ReadChannel():
 				if !open {
 					return
 				}
-				if p.Opcode == packet.SMsgAuthResponse {
+				if !signalled && (p.Opcode == packet.SMsgAuthChallenge || p.Opcode == packet.SMsgAuthResponse) {
+					signalled = true
 					select {
 					case authReady <- struct{}{}:
 					default:
@@ -252,12 +259,18 @@ func (s *GameSession) DeleteCharacter(ctx context.Context, p *packet.Packet) err
 
 	socket.SendPacket(s.authPacket)
 
-	// B24-cousin: wait for SMsgAuthResponse instead of magic 300ms sleep.
 	select {
 	case <-authReady:
 	case <-newCtx.Done():
 		sendDelFailed()
-		return fmt.Errorf("timeout waiting for worldserver auth response in DeleteCharacter")
+		return fmt.Errorf("timeout waiting for worldserver initial packet in DeleteCharacter")
+	}
+	// Same short-sleep approximation as CreateCharacter.
+	select {
+	case <-time.After(200 * time.Millisecond):
+	case <-newCtx.Done():
+		sendDelFailed()
+		return newCtx.Err()
 	}
 
 	socket.SendPacket(p)

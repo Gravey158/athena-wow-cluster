@@ -482,49 +482,50 @@ func (s *GameSession) connectToGameServerWithAddress(ctx context.Context, charac
 
 	socket.SendPacket(s.authPacket)
 
-	// B10 fix: replace blind read-then-sleep with explicit wait for
-	// SMsgAuthResponse. AC sends SMSG_AUTH_RESPONSE(AUTH_OK) from
-	// WorldSession::InitializeSessionCallback (src/server/game/Server/
-	// WorldSession.cpp:1498 in walkline AC fork) AFTER the WorldSession
-	// has been fully added to the session manager and its character-DB
-	// query holder loaded. That's exactly the "session is ready"
-	// signal the previous 200ms sleep was approximating.
+	// B71 (regression fix for B10): in cluster mode AC explicitly does NOT
+	// send SMSG_AUTH_RESPONSE from WorldSession::InitializeSessionCallback
+	// -- src/server/game/Server/WorldSession.cpp:1505 gates the SendAuthResponse
+	// call on `!sToCloud9Sidecar->ClusterModeEnabled()`. The old B10 wait
+	// thus timed out forever.
 	//
-	// Bonus B-cousin fix: the legacy `if p.Opcode != SMsgAuthChallenge`
-	// branch echoed unexpected packets back to the WORLDSOCKET, which
-	// is almost certainly a bug (would have caused worldserver to see
-	// its own packet echoed). Now we forward to the gamesocket (client)
-	// for any packet that isn't SMsgAuthResponse / SMsgAuthChallenge.
+	// What AC *does* send is the standard initial SMSG_AUTH_CHALLENGE (seed)
+	// that any worldserver emits on connection accept. We wait for that as
+	// the "TCP is alive and the worldserver is processing" signal, then
+	// short-sleep to approximate the WorldSession::InitializeSession()
+	// async DB callback. Same approximation the pre-B10 code used; the only
+	// thing actually wrong in the original was that it forwarded random
+	// unrelated packets back to the WORLDSOCKET. We forward to the client
+	// instead.
 	authWaitCtx, authWaitCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer authWaitCancel()
-	authReceived := false
-	for !authReceived {
+	gotInitial := false
+	for !gotInitial {
 		select {
 		case p, open := <-socket.ReadChannel():
 			if !open {
-				return nil, fmt.Errorf("world socket closed before SMsgAuthResponse")
+				return nil, fmt.Errorf("world socket closed before initial worldserver packet")
 			}
 			switch p.Opcode {
-			case packet.SMsgAuthResponse:
-				// WorldSession fully initialized. Do NOT forward to client --
-				// gateway already sent client its own SMsgAuthResponse during
-				// the earlier client-side auth handshake (AuthSession in
-				// gamesocket.go). A duplicate would confuse the client.
-				authReceived = true
-			case packet.SMsgAuthChallenge:
-				// Legacy branch: worldserver re-challenges gateway. Not
-				// observed in standard ToCloud9+AC config but preserve
-				// silent-drop behavior for safety.
+			case packet.SMsgAuthChallenge, packet.SMsgAuthResponse:
+				// Either is fine as a liveness signal. Don't forward to
+				// client -- gateway already drove the client auth handshake.
+				gotInitial = true
 			default:
-				// Any other packet the worldserver sends pre-auth-response
-				// (rare; possibly addon-info / warden init from C++ patches)
-				// should be forwarded to the client, not echoed back to the
-				// worldserver as the previous code did.
+				// Anything else: forward to client, not echo to worldserver.
 				sockets.SendOrCancel(s.ctx, s.gameSocket.WriteChannel(), p)
 			}
 		case <-authWaitCtx.Done():
-			return nil, fmt.Errorf("timeout waiting for SMsgAuthResponse from worldserver")
+			return nil, fmt.Errorf("timeout waiting for initial packet from worldserver")
 		}
+	}
+	// Short sleep approximating InitializeSessionCallback's async character-DB
+	// holder load. No deterministic ack exists in cluster mode (see comment
+	// above); 200ms matches the legacy pre-B10 value that the user reported
+	// working ("bin drin").
+	select {
+	case <-time.After(200 * time.Millisecond):
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 
 	if preLoginHook != nil {
