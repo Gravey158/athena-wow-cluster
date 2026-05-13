@@ -188,7 +188,8 @@ func (s *GameSession) HandleJoinChannel(ctx context.Context, p *packet.Packet) e
 	_ = r.Uint8() // unknown2
 	channelName := r.String()
 	password := r.String()
-	fmt.Println("Join Channel", channelName, channelID)
+	// B69: removed `fmt.Println("Join Channel", channelName, channelID)` --
+	// production-noise debug print to stdout uncontrolled by log level.
 	// If it's a system channel, just forward it to worldserver since it has all required DBC data
 	// and we will hook to worldserver response.
 	if channelID != 0 && s.worldSocket != nil {
@@ -473,7 +474,8 @@ func (s *GameSession) SendChannelMessageToChat(ctx context.Context, channelName 
 func (s *GameSession) HandleEventChannelMessage(ctx context.Context, e *eBroadcaster.Event) error {
 	eventData := e.Payload.(*eBroadcaster.ChannelMessagePayload)
 
-	fmt.Println("eventData:", eventData.Message, s.character.Name, "from", eventData.SenderName)
+	// B69: removed `fmt.Println("eventData:", ...)` debug print -- fired
+	// on every received channel message in production, no log level gate.
 
 	// Only send if we're a member of this channel
 	if !s.channelMembership.IsMember(eventData.ChannelName) {
