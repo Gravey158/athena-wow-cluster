@@ -130,9 +130,11 @@ func (s *GameSession) CreateCharacter(ctx context.Context, p *packet.Packet) err
 				}
 
 			case <-newCtx.Done():
-				if s.worldSocket != nil {
-					s.worldSocket.Close()
-				}
+				// B23 (same as B7): close the one-off `socket` created in this
+				// function, NOT the player's main worldserver connection
+				// (s.worldSocket). Previously a timeout in char-create or
+				// char-delete kicked the player off their actual world session.
+				socket.Close()
 				return
 			}
 		}
@@ -207,9 +209,11 @@ func (s *GameSession) DeleteCharacter(ctx context.Context, p *packet.Packet) err
 				}
 
 			case <-newCtx.Done():
-				if s.worldSocket != nil {
-					s.worldSocket.Close()
-				}
+				// B23 (same as B7): close the one-off `socket` created in this
+				// function, NOT the player's main worldserver connection
+				// (s.worldSocket). Previously a timeout in char-create or
+				// char-delete kicked the player off their actual world session.
+				socket.Close()
 				return
 			}
 		}

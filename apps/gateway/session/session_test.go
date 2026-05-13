@@ -70,12 +70,17 @@ func TestGameSessionHandlePacketsWorldPacketsRoute(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
+		// Wait a short moment after the 4th send before cancel, so the
+		// session's in-flight handler.Handle for the 4th packet completes
+		// its SendOrCancel before ctx is canceled. Sprint #3 B9 introduced
+		// select-cancel-on-ctx-done; without this delay we race.
 		defer cancel()
 
 		worldReadChan <- packet.NewWriter(packet.SMsgNewWorld).ToPacket()
 		worldReadChan <- packet.NewWriter(packet.SMsgNewWorld).ToPacket()
 		worldReadChan <- packet.NewWriter(packet.SMsgNewWorld).ToPacket()
 		worldReadChan <- packet.NewWriter(packet.SMsgNewWorld).ToPacket()
+		time.Sleep(time.Millisecond * 30)
 	}()
 
 	session.HandlePackets(ctx)
@@ -112,13 +117,17 @@ func TestGameSessionHandlePacketsGamePacketsRoute(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
+		// Wait a short moment after the 4th send before cancel, so HandlePing's
+		// SendOrCancel for the 4th packet completes before ctx is canceled.
+		// Sprint #3 B9 introduced select-cancel-on-ctx-done; without this delay
+		// we race.
 		defer cancel()
-		defer close(gameReadChan)
 
 		gameReadChan <- packet.NewWriter(packet.CMsgPing).ToPacket()
 		gameReadChan <- packet.NewWriter(packet.CMsgPing).ToPacket()
 		gameReadChan <- packet.NewWriter(packet.CMsgPing).ToPacket()
 		gameReadChan <- packet.NewWriter(packet.CMsgPing).ToPacket()
+		time.Sleep(time.Millisecond * 30)
 	}()
 
 	session.HandlePackets(ctx)

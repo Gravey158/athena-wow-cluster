@@ -136,9 +136,16 @@ func (s *GameSession) InterceptMoveWorldPortAck(ctx context.Context, p *packet.P
 	s.worldSocket = nil
 
 	go func(charGUID uint64) {
+		// B26 (same family as B14/B15): respect session lifecycle.
+		// Previously context.Background() meant the reconnect goroutine
+		// kept running even after the gateway/session shut down.
+		if s.ctx.Err() != nil {
+			return
+		}
+
 		var err error
 		var socket sockets.Socket
-		_, socket, err = s.connectToGameServer(context.Background(), charGUID, &mapID, nil)
+		_, socket, err = s.connectToGameServer(s.ctx, charGUID, &mapID, nil)
 		if err != nil {
 			s.logger.Error().Err(err).Msg("failed to reconnect player to the world")
 			resp := packet.NewWriterWithSize(packet.SMsgCharacterLoginFailed, 1)
@@ -149,8 +156,10 @@ func (s *GameSession) InterceptMoveWorldPortAck(ctx context.Context, p *packet.P
 
 		s.gameSocket.SendPacket(p)
 
-		// we need to modify session in a safe thread (goroutine)
-		s.sessionSafeFuChan <- func(session *GameSession) {
+		// Update session-owned state on the session goroutine.
+		// Drop the new socket if session is shutting down (B26 cleanup).
+		select {
+		case s.sessionSafeFuChan <- func(session *GameSession) {
 			if session.character != nil {
 				session.worldSocket = socket
 			}
@@ -160,12 +169,26 @@ func (s *GameSession) InterceptMoveWorldPortAck(ctx context.Context, p *packet.P
 			}
 
 			go func() {
-				time.Sleep(time.Millisecond * 500)
+				// B27 (race-by-sleep): wait for worldserver to finish
+				// registering channels. Same family as B6/B10 -- deferred
+				// pending worldserver-side handshake ack. At least make the
+				// sleep ctx-aware so it doesn't outlive the session.
+				select {
+				case <-time.After(time.Millisecond * 500):
+				case <-s.ctx.Done():
+					return
+				}
 
-				session.sessionSafeFuChan <- func(session *GameSession) {
+				select {
+				case session.sessionSafeFuChan <- func(session *GameSession) {
 					session.RejoinWorldserverToSystemChannels(ctx)
+				}:
+				case <-s.ctx.Done():
 				}
 			}()
+		}:
+		case <-s.ctx.Done():
+			socket.Close()
 		}
 	}(s.character.GUID)
 
