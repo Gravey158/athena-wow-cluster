@@ -1,0 +1,78 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: wow-ci-runner-set
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: ghcr.io/actions/actions-runner-controller-charts
+    chart: gha-runner-scale-set
+    targetRevision: "0.14.1"
+    helm:
+      releaseName: wow-cluster
+      values: |
+        # Single scale set scoped to Gravey158/athena-wow-cluster.
+        # Auth via PAT in Secret 'arc-github-pat' (key: github_token) -- sealed and
+        # committed via scripts/seal-github-pat.sh (see SETUP.md).
+        githubConfigUrl: "https://github.com/Gravey158/athena-wow-cluster"
+        githubConfigSecret: arc-github-pat
+
+        runnerScaleSetName: "wow-cluster"
+
+        # Lifecycle: ephemeral (1 job = 1 pod = 1 fresh container).
+        minRunners: 0
+        maxRunners: 2
+
+        # DinD mode -- AC build uses docker buildx in game-server/azerothcore/Dockerfile.
+        # If we move to kaniko/buildah later, switch to containerMode: kubernetes.
+        containerMode:
+          type: dind
+
+        # Runner pod template.
+        template:
+          spec:
+            # No nodeSelector for now -- K8s schedules wherever has capacity.
+            # Anti-affinity to ac-worldserver pod (Lenovo-04 pin) is a TODO,
+            # need to confirm the worldserver pod label first.
+            containers:
+              - name: runner
+                image: ghcr.io/actions/actions-runner:latest
+                command: ["/home/runner/run.sh"]
+                resources:
+                  requests:
+                    cpu: "2"
+                    memory: "4Gi"
+                  limits:
+                    cpu: "4"
+                    memory: "8Gi"
+                volumeMounts:
+                  - name: ccache
+                    mountPath: /home/runner/.ccache
+            volumes:
+              - name: ccache
+                persistentVolumeClaim:
+                  claimName: arc-ccache
+
+        # Listener pod (small, polls GitHub).
+        listenerTemplate:
+          spec:
+            containers:
+              - name: listener
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+                  limits:
+                    memory: 128Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: wow-ci
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

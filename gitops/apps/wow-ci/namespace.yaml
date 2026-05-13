@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wow-ci
+  labels:
+    purpose: ci-runners
+    project: athena-wow-cluster
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"

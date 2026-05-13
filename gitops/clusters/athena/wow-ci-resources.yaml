@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: wow-ci-resources
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Gravey158/athena-wow-cluster
+    targetRevision: HEAD
+    path: gitops/apps/wow-ci
+    directory:
+      recurse: false
+      include: '{namespace.yaml,ccache-pvc.yaml,github-pat-sealed-secret.yaml}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: wow-ci
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+  # github-pat-sealed-secret.yaml is created out-of-band by scripts/seal-github-pat.sh
+  # (see gitops/apps/wow-ci/SETUP.md). Until it exists in git, this app will report
+  # OutOfSync for the missing file — which is expected during initial bootstrap.
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      jsonPointers:
+        - /data
