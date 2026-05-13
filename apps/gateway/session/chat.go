@@ -64,7 +64,7 @@ func (s *GameSession) HandleChatMessage(ctx context.Context, p *packet.Packet) e
 		msg = r.String()
 		res, err := s.chatServiceClient.SendWhisperMessage(ctx, &pbChat.SendWhisperMessageRequest{
 			Api:          root.Ver,
-			RealmID:      root.RealmID,
+			RealmID:      s.realmID,
 			SenderGUID:   s.character.GUID,
 			SenderName:   s.character.Name,
 			SenderRace:   uint32(s.character.Race),
@@ -103,7 +103,7 @@ func (s *GameSession) HandleChatMessage(ctx context.Context, p *packet.Packet) e
 
 		_, err = s.guildServiceClient.SendGuildMessage(ctx, &pbGuild.SendGuildMessageParams{
 			Api:              root.Ver,
-			RealmID:          root.RealmID,
+			RealmID:          s.realmID,
 			SenderGUID:       s.character.GUID,
 			Language:         lang,
 			Message:          msg,
@@ -138,7 +138,7 @@ func (s *GameSession) HandleChatMessage(ctx context.Context, p *packet.Packet) e
 
 		_, err = s.groupServiceClient.SendMessage(ctx, &pbGroup.SendGroupMessageParams{
 			Api:         root.Ver,
-			RealmID:     root.RealmID,
+			RealmID:     s.realmID,
 			SenderGUID:  s.character.GUID,
 			Language:    lang,
 			Message:     msg,
@@ -352,7 +352,7 @@ func (s *GameSession) handleCommandMsgListGameServers(ctx context.Context) error
 func (s *GameSession) handleCommandMsgListGateways(ctx context.Context) error {
 	resp, err := s.serversRegistryClient.ListGatewaysForRealm(ctx, &pbServ.ListGatewaysForRealmRequest{
 		Api:     root.SupportedServerRegistryVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 	})
 	if err != nil {
 		return err
@@ -361,7 +361,7 @@ func (s *GameSession) handleCommandMsgListGateways(ctx context.Context) error {
 	s.SendSysMessage("List of available |cffF84519gateways|r:")
 
 	for _, server := range resp.Gateways {
-		isCurrentlyUsing := root.RetrievedGatewayID == server.Id
+		isCurrentlyUsing := s.gatewayID == server.Id
 
 		s.SendSysMessage(fmt.Sprintf("> Node healthCheckAddress: %s.", server.HealthAddress))
 		s.SendSysMessage(fmt.Sprintf("  Active connections: %d.", server.ActiveConnections))

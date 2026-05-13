@@ -80,7 +80,7 @@ func (s *GameSession) InterceptMoveWorldPortAck(ctx context.Context, p *packet.P
 
 	serversResult, err := s.serversRegistryClient.AvailableGameServersForMapAndRealm(s.ctx, &pbServ.AvailableGameServersForMapAndRealmRequest{
 		Api:     root.SupportedCharServiceVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		MapID:   mapID,
 	})
 
@@ -244,7 +244,7 @@ func (s *GameSession) InterceptSMsgNameQueryResponse(ctx context.Context, p *pac
 
 	newPckt.Uint8(0)
 	newPckt.String(playerData.CharName)
-	if g.GetRealmID() == uint16(root.RealmID) {
+	if g.GetRealmID() == uint16(s.realmID) {
 		newPckt.Uint8(0)
 	} else {
 		var name string

@@ -60,7 +60,7 @@ func (s *GameSession) HandleGroupInvite(ctx context.Context, p *packet.Packet) e
 
 	resp, err := s.charServiceClient.CharacterOnlineByName(ctx, &pbChar.CharacterOnlineByNameRequest{
 		Api:           root.Ver,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 		CharacterName: playerName,
 	})
 	if err != nil {
@@ -75,7 +75,7 @@ func (s *GameSession) HandleGroupInvite(ctx context.Context, p *packet.Packet) e
 
 	inviteRes, err := s.groupServiceClient.Invite(ctx, &pb.InviteParams{
 		Api:         root.SupportedGroupServiceVer,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		Inviter:     s.character.GUID,
 		Invited:     resp.Character.CharGUID,
 		InviterName: s.character.Name,
@@ -176,7 +176,7 @@ func (s *GameSession) HandleEventGroupCreated(ctx context.Context, e *eBroadcast
 func (s *GameSession) HandleGroupInviteAccept(ctx context.Context, _ *packet.Packet) error {
 	_, err := s.groupServiceClient.AcceptInvite(ctx, &pb.AcceptInviteParams{
 		Api:     root.SupportedGroupServiceVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		Player:  s.character.GUID,
 	})
 	if err != nil {
@@ -195,7 +195,7 @@ func (s *GameSession) HandleGroupUninvite(ctx context.Context, p *packet.Packet)
 	playerName := p.Reader().String()
 	resp, err := s.charServiceClient.CharacterByName(ctx, &pbChar.CharacterByNameRequest{
 		Api:           root.Ver,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 		CharacterName: playerName,
 	})
 	if err != nil {
@@ -227,7 +227,7 @@ func (s *GameSession) HandleGroupUninviteGUID(ctx context.Context, p *packet.Pac
 func (s *GameSession) HandleGroupLeave(ctx context.Context, _ *packet.Packet) error {
 	_, err := s.groupServiceClient.Leave(ctx, &pb.GroupLeaveParams{
 		Api:     root.SupportedGroupServiceVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		Player:  s.character.GUID,
 	})
 	if err != nil {
@@ -245,7 +245,7 @@ func (s *GameSession) HandleGroupLeave(ctx context.Context, _ *packet.Packet) er
 func (s *GameSession) HandleGroupConvertToRaid(ctx context.Context, _ *packet.Packet) error {
 	_, err := s.groupServiceClient.ConvertToRaid(ctx, &pb.ConvertToRaidParams{
 		Api:     root.SupportedGroupServiceVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		Player:  s.character.GUID,
 	})
 	if err != nil {
@@ -263,7 +263,7 @@ func (s *GameSession) HandleGroupConvertToRaid(ctx context.Context, _ *packet.Pa
 func (s *GameSession) HandleGroupSetLeader(ctx context.Context, p *packet.Packet) error {
 	_, err := s.groupServiceClient.ChangeLeader(ctx, &pb.ChangeLeaderParams{
 		Api:       root.SupportedGroupServiceVer,
-		RealmID:   root.RealmID,
+		RealmID:   s.realmID,
 		Player:    s.character.GUID,
 		NewLeader: p.Reader().Uint64(),
 	})
@@ -285,7 +285,7 @@ func (s *GameSession) HandleSetGroupTargetIcon(ctx context.Context, p *packet.Pa
 
 	_, err := s.groupServiceClient.SetGroupTargetIcon(ctx, &pb.SetGroupTargetIconRequest{
 		Api:        root.SupportedGroupServiceVer,
-		RealmID:    root.RealmID,
+		RealmID:    s.realmID,
 		SetterGUID: s.character.GUID,
 		IconID:     uint32(iconIDOrAction),
 		TargetGUID: reader.Uint64(),
@@ -306,7 +306,7 @@ func (s *GameSession) HandleSetLootMethod(ctx context.Context, p *packet.Packet)
 
 	_, err := s.groupServiceClient.SetLootMethod(ctx, &pb.SetLootMethodRequest{
 		Api:           root.SupportedGroupServiceVer,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 		PlayerGUID:    s.character.GUID,
 		Method:        method,
 		LootMaster:    looter,
@@ -329,7 +329,7 @@ func (s *GameSession) HandleSetDungeonDifficulty(ctx context.Context, p *packet.
 
 	groupResp, err := s.groupServiceClient.GetGroupByMember(ctx, &pb.GetGroupByMemberRequest{
 		Api:     root.SupportedGroupServiceVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		Player:  s.character.GUID,
 	})
 	if err != nil {
@@ -347,7 +347,7 @@ func (s *GameSession) HandleSetDungeonDifficulty(ctx context.Context, p *packet.
 
 	_, err = s.groupServiceClient.SetDungeonDifficulty(ctx, &pb.SetDungeonDifficultyRequest{
 		Api:        root.SupportedGroupServiceVer,
-		RealmID:    root.RealmID,
+		RealmID:    s.realmID,
 		PlayerGUID: s.character.GUID,
 		Difficulty: difficulty,
 	})
@@ -365,7 +365,7 @@ func (s *GameSession) HandleSetRaidDifficulty(ctx context.Context, p *packet.Pac
 
 	groupResp, err := s.groupServiceClient.GetGroupByMember(ctx, &pb.GetGroupByMemberRequest{
 		Api:     root.SupportedGroupServiceVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		Player:  s.character.GUID,
 	})
 	if err != nil {
@@ -383,7 +383,7 @@ func (s *GameSession) HandleSetRaidDifficulty(ctx context.Context, p *packet.Pac
 
 	_, err = s.groupServiceClient.SetRaidDifficulty(ctx, &pb.SetRaidDifficultyRequest{
 		Api:        root.SupportedGroupServiceVer,
-		RealmID:    root.RealmID,
+		RealmID:    s.realmID,
 		PlayerGUID: s.character.GUID,
 		Difficulty: difficulty,
 	})
@@ -432,7 +432,7 @@ func (s *GameSession) HandleEventGroupDifficultyChanged(ctx context.Context, e *
 func (s *GameSession) sendGroupListOfTargetIcons(ctx context.Context) error {
 	gr, err := s.groupServiceClient.GetGroupByMember(ctx, &pb.GetGroupByMemberRequest{
 		Api:     root.SupportedGroupServiceVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		Player:  s.character.GUID,
 	})
 	if err != nil {
@@ -464,7 +464,7 @@ func (s *GameSession) sendGroupListOfTargetIcons(ctx context.Context) error {
 func (s *GameSession) groupUninviteWithGUID(ctx context.Context, player uint64, playerName, reason string) error {
 	_, err := s.groupServiceClient.Uninvite(ctx, &pb.UninviteParams{
 		Api:       root.SupportedGroupServiceVer,
-		RealmID:   root.RealmID,
+		RealmID:   s.realmID,
 		Initiator: s.character.GUID,
 		Target:    player,
 		Reason:    reason,
@@ -486,7 +486,7 @@ func (s *GameSession) groupUninviteWithGUID(ctx context.Context, player uint64, 
 func (s *GameSession) LoadGroupForPlayer(ctx context.Context) error {
 	res, err := s.groupServiceClient.GetGroupIDByPlayer(ctx, &pb.GetGroupIDByPlayerRequest{
 		Api:     root.SupportedGroupServiceVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		Player:  s.character.GUID,
 	})
 	if err != nil {
@@ -503,7 +503,7 @@ func (s *GameSession) LoadGroupForPlayer(ctx context.Context) error {
 func (s *GameSession) SendGroupUpdate(ctx context.Context, groupID uint) error {
 	groupResp, err := s.groupServiceClient.GetGroup(ctx, &pb.GetGroupRequest{
 		Api:     root.SupportedGroupServiceVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		GroupID: uint32(groupID),
 	})
 	if err != nil {

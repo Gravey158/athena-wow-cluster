@@ -176,6 +176,9 @@ func main() {
 			GameServerGRPCConnMgr:            gameserverconn.DefaultGameServerGRPCConnMgr,
 			PacketProcessTimeout:             time.Second * time.Duration(conf.PacketProcessTimeoutSecs),
 			ShowGameserverConnChangeToClient: conf.ShowGameserverConnChangeToClient,
+			// A4: inject per-session instead of reaching into package globals.
+			RealmID:   root.RealmID,
+			GatewayID: root.RetrievedGatewayID,
 		})
 		go func() {
 			healthandmetrics.ActiveConnectionsMetrics.Inc()

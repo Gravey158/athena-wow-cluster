@@ -26,7 +26,7 @@ func (s *GameSession) CharactersList(ctx context.Context, p *packet.Packet) erro
 	r, err := s.charServiceClient.CharactersToLoginForAccount(ctx, &pbChar.CharactersToLoginForAccountRequest{
 		Api:       root.SupportedCharServiceVer,
 		AccountID: s.accountID,
-		RealmID:   root.RealmID,
+		RealmID:   s.realmID,
 	})
 	if err != nil {
 		return err
@@ -90,7 +90,7 @@ func (s *GameSession) CreateCharacter(ctx context.Context, p *packet.Packet) err
 
 	serverResult, err := s.serversRegistryClient.RandomGameServerForRealm(ctx, &pbServ.RandomGameServerForRealmRequest{
 		Api:     root.SupportedServerRegistryVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 	})
 	if err != nil {
 		sendCreateFailed()
@@ -167,7 +167,7 @@ func (s *GameSession) DeleteCharacter(ctx context.Context, p *packet.Packet) err
 
 	serverResult, err := s.serversRegistryClient.RandomGameServerForRealm(ctx, &pbServ.RandomGameServerForRealmRequest{
 		Api:     root.SupportedServerRegistryVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 	})
 	if err != nil {
 		sendDelFailed()

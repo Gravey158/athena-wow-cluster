@@ -47,7 +47,7 @@ func (s *GameSession) HandleGuildRoster(ctx context.Context, p *packet.Packet) e
 
 	guildResp, err := s.guildServiceClient.GetRosterInfo(ctx, &pbGuild.GetRosterInfoParams{
 		Api:     root.Ver,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		GuildID: uint64(s.character.GuildID),
 	})
 	if err != nil {
@@ -106,7 +106,7 @@ func (s *GameSession) GuildLoginCommand(ctx context.Context) error {
 
 	guildResp, err := s.guildServiceClient.GetRosterInfo(ctx, &pbGuild.GetRosterInfoParams{
 		Api:     root.Ver,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		GuildID: uint64(s.character.GuildID),
 	})
 	if err != nil {
@@ -133,7 +133,7 @@ func (s *GameSession) GuildLoginCommand(ctx context.Context) error {
 func (s *GameSession) HandleGuildInvite(ctx context.Context, p *packet.Packet) error {
 	resp, err := s.charServiceClient.CharacterOnlineByName(ctx, &pbChar.CharacterOnlineByNameRequest{
 		Api:           root.Ver,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 		CharacterName: p.Reader().String(),
 	})
 	if err != nil {
@@ -149,7 +149,7 @@ func (s *GameSession) HandleGuildInvite(ctx context.Context, p *packet.Packet) e
 
 	_, err = s.guildServiceClient.InviteMember(ctx, &pbGuild.InviteMemberParams{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		Inviter:     s.character.GUID,
 		Invitee:     resp.Character.CharGUID,
 		InviteeName: resp.Character.CharName,
@@ -303,7 +303,7 @@ func (s *GameSession) HandleEventGuildNewMessage(_ context.Context, e *eBroadcas
 func (s *GameSession) HandleGuildInviteAccept(ctx context.Context, _ *packet.Packet) error {
 	inviteResp, err := s.guildServiceClient.InviteAccepted(ctx, &pbGuild.InviteAcceptedParams{
 		Api:     root.Ver,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		Character: &pbGuild.InviteAcceptedParams_Character{
 			Guid:      s.character.GUID,
 			Name:      s.character.Name,
@@ -327,7 +327,7 @@ func (s *GameSession) HandleGuildInviteAccept(ctx context.Context, _ *packet.Pac
 func (s *GameSession) HandleGuildLeave(ctx context.Context, p *packet.Packet) error {
 	_, err := s.guildServiceClient.Leave(ctx, &pbGuild.LeaveParams{
 		Api:     root.Ver,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		Leaver:  s.character.GUID,
 	})
 	if err != nil {
@@ -342,7 +342,7 @@ func (s *GameSession) HandleGuildLeave(ctx context.Context, p *packet.Packet) er
 func (s *GameSession) HandleGuildKick(ctx context.Context, p *packet.Packet) error {
 	resp, err := s.charServiceClient.CharacterOnlineByName(ctx, &pbChar.CharacterOnlineByNameRequest{
 		Api:           root.Ver,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 		CharacterName: p.Reader().String(),
 	})
 	if err != nil {
@@ -356,7 +356,7 @@ func (s *GameSession) HandleGuildKick(ctx context.Context, p *packet.Packet) err
 
 	_, err = s.guildServiceClient.Kick(ctx, &pbGuild.KickParams{
 		Api:     root.Ver,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		Kicker:  s.character.GUID,
 		Target:  resp.Character.CharGUID,
 	})
@@ -370,7 +370,7 @@ func (s *GameSession) HandleGuildKick(ctx context.Context, p *packet.Packet) err
 func (s *GameSession) HandleGuildSetMessageOfTheDay(ctx context.Context, p *packet.Packet) error {
 	_, err := s.guildServiceClient.SetMessageOfTheDay(ctx, &pbGuild.SetMessageOfTheDayParams{
 		Api:             root.Ver,
-		RealmID:         root.RealmID,
+		RealmID:         s.realmID,
 		ChangerGUID:     s.character.GUID,
 		MessageOfTheDay: p.Reader().String(),
 	})
@@ -388,7 +388,7 @@ func (s *GameSession) HandleGuildSetPublicNote(ctx context.Context, p *packet.Pa
 
 	resp, err := s.charServiceClient.CharacterOnlineByName(ctx, &pbChar.CharacterOnlineByNameRequest{
 		Api:           root.Ver,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 		CharacterName: targetName,
 	})
 	if err != nil {
@@ -402,7 +402,7 @@ func (s *GameSession) HandleGuildSetPublicNote(ctx context.Context, p *packet.Pa
 
 	_, err = s.guildServiceClient.SetMemberPublicNote(ctx, &pbGuild.SetNoteParams{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		ChangerGUID: s.character.GUID,
 		TargetGUID:  resp.Character.CharGUID,
 		Note:        note,
@@ -421,7 +421,7 @@ func (s *GameSession) HandleGuildSetOfficerNote(ctx context.Context, p *packet.P
 
 	resp, err := s.charServiceClient.CharacterOnlineByName(ctx, &pbChar.CharacterOnlineByNameRequest{
 		Api:           root.Ver,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 		CharacterName: targetName,
 	})
 	if err != nil {
@@ -435,7 +435,7 @@ func (s *GameSession) HandleGuildSetOfficerNote(ctx context.Context, p *packet.P
 
 	_, err = s.guildServiceClient.SetMemberOfficerNote(ctx, &pbGuild.SetNoteParams{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		ChangerGUID: s.character.GUID,
 		TargetGUID:  resp.Character.CharGUID,
 		Note:        note,
@@ -450,7 +450,7 @@ func (s *GameSession) HandleGuildSetOfficerNote(ctx context.Context, p *packet.P
 func (s *GameSession) HandleGuildSetInfoText(ctx context.Context, p *packet.Packet) error {
 	_, err := s.guildServiceClient.SetGuildInfo(ctx, &pbGuild.SetGuildInfoParams{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		ChangerGUID: s.character.GUID,
 		Info:        p.Reader().String(),
 	})
@@ -470,7 +470,7 @@ func (s *GameSession) HandleGuildRankUpdate(ctx context.Context, p *packet.Packe
 
 	_, err := s.guildServiceClient.UpdateRank(ctx, &pbGuild.RankUpdateParams{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		ChangerGUID: s.character.GUID,
 		Rank:        rankID,
 		RankName:    name,
@@ -490,7 +490,7 @@ func (s *GameSession) HandleGuildRankAdd(ctx context.Context, p *packet.Packet) 
 
 	_, err := s.guildServiceClient.AddRank(ctx, &pbGuild.AddRankParams{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		ChangerGUID: s.character.GUID,
 		RankName:    name,
 	})
@@ -504,7 +504,7 @@ func (s *GameSession) HandleGuildRankAdd(ctx context.Context, p *packet.Packet) 
 func (s *GameSession) HandleGuildRankDelete(ctx context.Context, p *packet.Packet) error {
 	_, err := s.guildServiceClient.DeleteLastRank(ctx, &pbGuild.DeleteLastRankParams{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		ChangerGUID: s.character.GUID,
 	})
 	if err != nil {
@@ -517,7 +517,7 @@ func (s *GameSession) HandleGuildRankDelete(ctx context.Context, p *packet.Packe
 func (s *GameSession) HandleGuildPromote(ctx context.Context, p *packet.Packet) error {
 	resp, err := s.charServiceClient.CharacterOnlineByName(ctx, &pbChar.CharacterOnlineByNameRequest{
 		Api:           root.Ver,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 		CharacterName: p.Reader().String(),
 	})
 	if err != nil {
@@ -531,7 +531,7 @@ func (s *GameSession) HandleGuildPromote(ctx context.Context, p *packet.Packet) 
 
 	_, err = s.guildServiceClient.PromoteMember(ctx, &pbGuild.PromoteDemoteParams{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		ChangerGUID: s.character.GUID,
 		TargetGUID:  resp.Character.CharGUID,
 	})
@@ -545,7 +545,7 @@ func (s *GameSession) HandleGuildPromote(ctx context.Context, p *packet.Packet) 
 func (s *GameSession) HandleGuildDemote(ctx context.Context, p *packet.Packet) error {
 	resp, err := s.charServiceClient.CharacterOnlineByName(ctx, &pbChar.CharacterOnlineByNameRequest{
 		Api:           root.Ver,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 		CharacterName: p.Reader().String(),
 	})
 	if err != nil {
@@ -559,7 +559,7 @@ func (s *GameSession) HandleGuildDemote(ctx context.Context, p *packet.Packet) e
 
 	_, err = s.guildServiceClient.DemoteMember(ctx, &pbGuild.PromoteDemoteParams{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		ChangerGUID: s.character.GUID,
 		TargetGUID:  resp.Character.CharGUID,
 	})
@@ -574,7 +574,7 @@ func (s *GameSession) HandleGuildQuery(ctx context.Context, p *packet.Packet) er
 	guildID := p.Reader().Uint32()
 	guildResp, err := s.guildServiceClient.GetGuildInfo(ctx, &pbGuild.GetInfoParams{
 		Api:     root.Ver,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		GuildID: uint64(guildID),
 	})
 	if err != nil {
@@ -607,7 +607,7 @@ func (s *GameSession) HandleGuildPermissions(ctx context.Context, p *packet.Pack
 
 	guildResp, err := s.guildServiceClient.GetRosterInfo(ctx, &pbGuild.GetRosterInfoParams{
 		Api:     root.Ver,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		GuildID: uint64(s.character.GuildID),
 	})
 	if err != nil {

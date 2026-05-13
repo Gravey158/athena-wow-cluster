@@ -40,7 +40,7 @@ func (s *GameSession) HandleContactList(ctx context.Context, p *packet.Packet) e
 
 	resp, err := s.charServiceClient.GetFriendsList(ctx, &pbChar.GetFriendsListRequest{
 		Api:        root.Ver,
-		RealmID:    root.RealmID,
+		RealmID:    s.realmID,
 		PlayerGUID: s.character.GUID,
 	})
 	if err != nil {
@@ -91,7 +91,7 @@ func (s *GameSession) HandleAddFriend(ctx context.Context, p *packet.Packet) err
 	// Resolve friend name to GUID
 	charResp, err := s.charServiceClient.CharacterByName(ctx, &pbChar.CharacterByNameRequest{
 		Api:           root.Ver,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 		CharacterName: friendName,
 	})
 	if err != nil {
@@ -105,7 +105,7 @@ func (s *GameSession) HandleAddFriend(ctx context.Context, p *packet.Packet) err
 
 	friendResp, err := s.charServiceClient.AddFriend(ctx, &pbChar.AddFriendRequest{
 		Api:        root.Ver,
-		RealmID:    root.RealmID,
+		RealmID:    s.realmID,
 		PlayerGUID: s.character.GUID,
 		FriendGUID: charResp.Character.CharGUID,
 		FriendName: friendName,
@@ -136,7 +136,7 @@ func (s *GameSession) HandleDelFriend(ctx context.Context, p *packet.Packet) err
 
 	_, err := s.charServiceClient.RemoveFriend(ctx, &pbChar.RemoveFriendRequest{
 		Api:        root.Ver,
-		RealmID:    root.RealmID,
+		RealmID:    s.realmID,
 		PlayerGUID: s.character.GUID,
 		FriendGUID: friendGUID,
 	})
@@ -158,7 +158,7 @@ func (s *GameSession) HandleSetContactNotes(ctx context.Context, p *packet.Packe
 
 	_, err := s.charServiceClient.SetFriendNote(ctx, &pbChar.SetFriendNoteRequest{
 		Api:        root.Ver,
-		RealmID:    root.RealmID,
+		RealmID:    s.realmID,
 		PlayerGUID: s.character.GUID,
 		FriendGUID: friendGUID,
 		Note:       note,
@@ -178,7 +178,7 @@ func (s *GameSession) HandleAddIgnore(ctx context.Context, p *packet.Packet) err
 
 	charResp, err := s.charServiceClient.CharacterByName(ctx, &pbChar.CharacterByNameRequest{
 		Api:           root.Ver,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 		CharacterName: ignoreName,
 	})
 	if err != nil {
@@ -192,7 +192,7 @@ func (s *GameSession) HandleAddIgnore(ctx context.Context, p *packet.Packet) err
 
 	ignoreResp, err := s.charServiceClient.AddIgnore(ctx, &pbChar.AddIgnoreRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		PlayerGUID:  s.character.GUID,
 		IgnoredGUID: charResp.Character.CharGUID,
 	})
@@ -212,7 +212,7 @@ func (s *GameSession) HandleDelIgnore(ctx context.Context, p *packet.Packet) err
 
 	_, err := s.charServiceClient.RemoveIgnore(ctx, &pbChar.RemoveIgnoreRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		PlayerGUID:  s.character.GUID,
 		IgnoredGUID: ignoredGUID,
 	})
@@ -325,7 +325,7 @@ func (s *GameSession) HandleWho(ctx context.Context, p *packet.Packet) error {
 	resp, err := s.charServiceClient.WhoQuery(ctx, &pbChar.WhoQueryRequest{
 		Api:           root.Ver,
 		CharacterGUID: s.character.GUID,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 		LvlMin:        lvlMin,
 		LvlMax:        lvlMax,
 		PlayerName:    playerName,

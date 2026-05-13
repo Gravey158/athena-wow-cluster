@@ -16,7 +16,7 @@ func (s *GameSession) HandleChannelPassword(ctx context.Context, p *packet.Packe
 
 	resp, err := s.chatServiceClient.SetChannelPassword(ctx, &pbChat.SetChannelPasswordRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		SetterGUID:  s.character.GUID,
 		ChannelName: channelName,
 		Password:    password,
@@ -53,7 +53,7 @@ func (s *GameSession) HandleChannelSetOwner(ctx context.Context, p *packet.Packe
 
 	resp, err := s.chatServiceClient.SetChannelOwner(ctx, &pbChat.SetChannelOwnerRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		SetterGUID:  s.character.GUID,
 		ChannelName: channelName,
 		TargetName:  targetName,
@@ -91,7 +91,7 @@ func (s *GameSession) HandleChannelSetModerator(ctx context.Context, p *packet.P
 
 	resp, err := s.chatServiceClient.SetChannelModerator(ctx, &pbChat.SetChannelModeratorRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		SetterGUID:  s.character.GUID,
 		ChannelName: channelName,
 		TargetName:  targetName,
@@ -130,7 +130,7 @@ func (s *GameSession) HandleChannelUnsetModerator(ctx context.Context, p *packet
 
 	resp, err := s.chatServiceClient.UnsetChannelModerator(ctx, &pbChat.UnsetChannelModeratorRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		SetterGUID:  s.character.GUID,
 		ChannelName: channelName,
 		TargetName:  targetName,
@@ -168,7 +168,7 @@ func (s *GameSession) HandleChannelMute(ctx context.Context, p *packet.Packet) e
 
 	resp, err := s.chatServiceClient.SetChannelMute(ctx, &pbChat.SetChannelMuteRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		MuterGUID:   s.character.GUID,
 		ChannelName: channelName,
 		TargetName:  targetName,
@@ -206,7 +206,7 @@ func (s *GameSession) HandleChannelUnmute(ctx context.Context, p *packet.Packet)
 
 	resp, err := s.chatServiceClient.UnsetChannelMute(ctx, &pbChat.UnsetChannelMuteRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		UnmuterGUID: s.character.GUID,
 		ChannelName: channelName,
 		TargetName:  targetName,
@@ -244,7 +244,7 @@ func (s *GameSession) HandleChannelInvite(ctx context.Context, p *packet.Packet)
 
 	resp, err := s.chatServiceClient.InviteToChannel(ctx, &pbChat.InviteToChannelRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		InviterGUID: s.character.GUID,
 		ChannelName: channelName,
 		TargetName:  targetName,
@@ -288,7 +288,7 @@ func (s *GameSession) HandleChannelKick(ctx context.Context, p *packet.Packet) e
 
 	resp, err := s.chatServiceClient.KickFromChannel(ctx, &pbChat.KickFromChannelRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		KickerGUID:  s.character.GUID,
 		ChannelName: channelName,
 		TargetName:  targetName,
@@ -326,7 +326,7 @@ func (s *GameSession) HandleChannelBan(ctx context.Context, p *packet.Packet) er
 
 	resp, err := s.chatServiceClient.BanFromChannel(ctx, &pbChat.BanFromChannelRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		BannerGUID:  s.character.GUID,
 		ChannelName: channelName,
 		TargetName:  targetName,
@@ -364,7 +364,7 @@ func (s *GameSession) HandleChannelUnban(ctx context.Context, p *packet.Packet) 
 
 	resp, err := s.chatServiceClient.UnbanFromChannel(ctx, &pbChat.UnbanFromChannelRequest{
 		Api:          root.Ver,
-		RealmID:      root.RealmID,
+		RealmID:      s.realmID,
 		UnbannerGUID: s.character.GUID,
 		ChannelName:  channelName,
 		TargetName:   targetName,
@@ -401,7 +401,7 @@ func (s *GameSession) HandleChannelAnnouncements(ctx context.Context, p *packet.
 
 	resp, err := s.chatServiceClient.ToggleChannelAnnouncements(ctx, &pbChat.ToggleChannelAnnouncementsRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		TogglerGUID: s.character.GUID,
 		ChannelName: channelName,
 		TeamID:      s.getTeamID(),
@@ -439,7 +439,7 @@ func (s *GameSession) HandleChannelModerate(ctx context.Context, p *packet.Packe
 
 	resp, err := s.chatServiceClient.ToggleChannelModeration(ctx, &pbChat.ToggleChannelModerationRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		TogglerGUID: s.character.GUID,
 		ChannelName: channelName,
 		TeamID:      s.getTeamID(),

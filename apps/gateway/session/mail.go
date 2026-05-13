@@ -106,7 +106,7 @@ func (s *GameSession) HandleSendMail(ctx context.Context, p *packet.Packet) erro
 
 	playerOnline, err := s.charServiceClient.CharacterByName(ctx, &pbChar.CharacterByNameRequest{
 		Api:           root.Ver,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 		CharacterName: target,
 	})
 	if err != nil {
@@ -223,7 +223,7 @@ func (s *GameSession) HandleSendMail(ctx context.Context, p *packet.Packet) erro
 
 	_, err = s.mailServiceClient.Send(ctx, &pbMail.SendRequest{
 		Api:                 root.SupportedMailServiceVer,
-		RealmID:             root.RealmID,
+		RealmID:             s.realmID,
 		SenderGuid:          &s.character.GUID,
 		ReceiverGuid:        playerOnline.Character.CharGUID,
 		Subject:             subject,
@@ -262,7 +262,7 @@ func (s *GameSession) HandleGetMailList(ctx context.Context, p *packet.Packet) e
 
 	resp, err := s.mailServiceClient.MailsForPlayer(ctx, &pbMail.MailsForPlayerRequest{
 		Api:        root.SupportedMailServiceVer,
-		RealmID:    root.RealmID,
+		RealmID:    s.realmID,
 		PlayerGuid: s.character.GUID,
 	})
 	if err != nil {
@@ -348,7 +348,7 @@ func (s *GameSession) HandleMailMarksAsRead(ctx context.Context, p *packet.Packe
 
 	_, err = s.mailServiceClient.MarkAsReadForPlayer(ctx, &pbMail.MarkAsReadForPlayerRequest{
 		Api:        root.SupportedMailServiceVer,
-		RealmID:    root.RealmID,
+		RealmID:    s.realmID,
 		PlayerGuid: s.character.GUID,
 		MailID:     mailID,
 	})
@@ -379,7 +379,7 @@ func (s *GameSession) HandleMailTakeMoney(ctx context.Context, p *packet.Packet)
 
 	removeResult, err := s.mailServiceClient.RemoveMailMoney(ctx, &pbMail.RemoveMailMoneyRequest{
 		Api:        root.SupportedMailServiceVer,
-		RealmID:    root.RealmID,
+		RealmID:    s.realmID,
 		PlayerGuid: &s.character.GUID,
 		MailID:     mailID,
 	})
@@ -430,7 +430,7 @@ func (s *GameSession) HandleMailTakeItem(ctx context.Context, p *packet.Packet) 
 
 	mailResp, err := s.mailServiceClient.MailByID(ctx, &pbMail.MailByIDRequest{
 		Api:     root.SupportedMailServiceVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		MailID:  mailID,
 	})
 	if err != nil {
@@ -510,7 +510,7 @@ func (s *GameSession) HandleMailTakeItem(ctx context.Context, p *packet.Packet) 
 
 	_, err = s.mailServiceClient.RemoveMailItem(ctx, &pbMail.RemoveMailItemRequest{
 		Api:                  root.SupportedMailServiceVer,
-		RealmID:              root.RealmID,
+		RealmID:              s.realmID,
 		PlayerGuid:           &s.character.GUID,
 		MailID:               mailID,
 		ItemGuid:             uint64(itemID),
@@ -534,7 +534,7 @@ func (s *GameSession) HandleMailTakeItem(ctx context.Context, p *packet.Packet) 
 func (s *GameSession) HandleQueryNextMailTime(ctx context.Context, p *packet.Packet) error {
 	resp, err := s.mailServiceClient.MailsForPlayer(ctx, &pbMail.MailsForPlayerRequest{
 		Api:        root.SupportedMailServiceVer,
-		RealmID:    root.RealmID,
+		RealmID:    s.realmID,
 		PlayerGuid: s.character.GUID,
 	})
 	if err != nil {
@@ -620,7 +620,7 @@ func (s *GameSession) HandleDeleteMail(ctx context.Context, p *packet.Packet) er
 
 	mailResp, err := s.mailServiceClient.MailByID(ctx, &pbMail.MailByIDRequest{
 		Api:     root.SupportedMailServiceVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		MailID:  mailID,
 	})
 	if err != nil {
@@ -638,7 +638,7 @@ func (s *GameSession) HandleDeleteMail(ctx context.Context, p *packet.Packet) er
 
 	_, err = s.mailServiceClient.DeleteMail(ctx, &pbMail.DeleteMailRequest{
 		Api:     root.SupportedMailServiceVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		MailID:  mailID,
 	})
 	if err != nil {

@@ -210,7 +210,7 @@ func (s *GameSession) HandleJoinChannel(ctx context.Context, p *packet.Packet) e
 	// Call chat service to join the channel
 	resp, err := s.chatServiceClient.JoinChannel(ctx, &pbChat.JoinChannelRequest{
 		Api:          root.Ver,
-		RealmID:      root.RealmID,
+		RealmID:      s.realmID,
 		PlayerGUID:   s.character.GUID,
 		PlayerName:   s.character.Name,
 		TeamID:       s.getTeamID(),
@@ -269,7 +269,7 @@ func (s *GameSession) HandleLeaveChannel(ctx context.Context, p *packet.Packet) 
 	// Call chat service to leave the channel
 	resp, err := s.chatServiceClient.LeaveChannel(ctx, &pbChat.LeaveChannelRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		PlayerGUID:  s.character.GUID,
 		ChannelName: channelName,
 		TeamID:      s.getTeamID(),
@@ -302,7 +302,7 @@ func (s *GameSession) HandleChannelList(ctx context.Context, p *packet.Packet) e
 	// Call chat service to get channel members
 	resp, err := s.chatServiceClient.GetChannelList(ctx, &pbChat.GetChannelListRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		PlayerGUID:  s.character.GUID,
 		ChannelName: channelName,
 		TeamID:      s.getTeamID(),
@@ -442,7 +442,7 @@ func (s *GameSession) getTeamID() pbChat.TeamID {
 func (s *GameSession) SendChannelMessageToChat(ctx context.Context, channelName string, message string, language uint32) error {
 	resp, err := s.chatServiceClient.SendChannelMessage(ctx, &pbChat.SendChannelMessageRequest{
 		Api:         root.Ver,
-		RealmID:     root.RealmID,
+		RealmID:     s.realmID,
 		SenderGUID:  s.character.GUID,
 		SenderName:  s.character.Name,
 		ChannelName: channelName,
@@ -549,7 +549,7 @@ func (s *GameSession) InterceptWorldserverChannelNotify(ctx context.Context, p *
 	case ChatYouLeftNotice:
 		_, err := s.chatServiceClient.LeaveChannel(ctx, &pbChat.LeaveChannelRequest{
 			Api:         root.Ver,
-			RealmID:     root.RealmID,
+			RealmID:     s.realmID,
 			PlayerGUID:  s.character.GUID,
 			ChannelName: channelName,
 			TeamID:      s.getTeamID(),
@@ -566,7 +566,7 @@ func (s *GameSession) InterceptWorldserverChannelNotify(ctx context.Context, p *
 				if ch.ChannelID == channelID {
 					_, err := s.chatServiceClient.LeaveChannel(ctx, &pbChat.LeaveChannelRequest{
 						Api:         root.Ver,
-						RealmID:     root.RealmID,
+						RealmID:     s.realmID,
 						PlayerGUID:  s.character.GUID,
 						ChannelName: ch.Name,
 						TeamID:      s.getTeamID(),
@@ -585,7 +585,7 @@ func (s *GameSession) InterceptWorldserverChannelNotify(ctx context.Context, p *
 		// Join via chat service, passing worldserver's channel ID AND flags
 		_, err := s.chatServiceClient.JoinChannel(ctx, &pbChat.JoinChannelRequest{
 			Api:          root.Ver,
-			RealmID:      root.RealmID,
+			RealmID:      s.realmID,
 			PlayerGUID:   s.character.GUID,
 			PlayerName:   s.character.Name,
 			TeamID:       s.getTeamID(),

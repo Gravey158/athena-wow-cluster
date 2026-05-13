@@ -81,6 +81,12 @@ type GameSession struct {
 	// showGameserverConnChangeToClient when enabled sends chat system message
 	// to the player with information about connection change.
 	showGameserverConnChangeToClient bool
+
+	// realmID + gatewayID were previously read from package-level globals
+	// (root.RealmID, root.RetrievedGatewayID). Per-session fields now (A4):
+	// foundation for multi-realm support, removes init-order fragility.
+	realmID   uint32
+	gatewayID string
 }
 
 type GameSessionParams struct {
@@ -99,6 +105,11 @@ type GameSessionParams struct {
 	GameServerGRPCConnMgr            conn.GameServerGRPCConnMgr
 	PacketProcessTimeout             time.Duration
 	ShowGameserverConnChangeToClient bool
+
+	// RealmID + GatewayID injected from gateway main.go config.
+	// Previously read from root.RealmID/root.RetrievedGatewayID globals (A4).
+	RealmID   uint32
+	GatewayID string
 }
 
 func NewGameSession(
@@ -138,6 +149,9 @@ func NewGameSession(
 		packetProcessTimeout:     packetProcessTimeout,
 		channelMembership:        NewChannelMembership(0, params.ChatChannelsEventBroadcaster),
 		worldserverChannelBuffer: make([]WorldserverChannelInfo, 0),
+
+		realmID:   params.RealmID,
+		gatewayID: params.GatewayID,
 	}
 	return s
 }
@@ -296,8 +310,8 @@ func (s *GameSession) Login(ctx context.Context, p *packet.Packet) error {
 	s.worldSocket = socket
 
 	err = s.eventsProducer.CharacterLoggedIn(&events.GWEventCharacterLoggedInPayload{
-		RealmID:     root.RealmID,
-		GatewayID:   root.RetrievedGatewayID,
+		RealmID:     s.realmID,
+		GatewayID:   s.gatewayID,
 		CharGUID:    char.GUID,
 		CharName:    char.Name,
 		CharRace:    uint8(char.Race),
@@ -353,7 +367,7 @@ func (s *GameSession) ReadyForAccountDataTimes(ctx context.Context, p *packet.Pa
 	accountData, err := s.charServiceClient.AccountDataForAccount(ctx, &pbChar.AccountDataForAccountRequest{
 		Api:       root.SupportedCharServiceVer,
 		AccountID: s.accountID,
-		RealmID:   root.RealmID,
+		RealmID:   s.realmID,
 	})
 	if err != nil {
 		return err
@@ -413,7 +427,7 @@ func (s *GameSession) connectToGameServer(ctx context.Context, characterGUID uin
 	r, err := s.charServiceClient.CharactersToLoginByGUID(ctx, &pbChar.CharactersToLoginByGUIDRequest{
 		Api:           root.SupportedCharServiceVer,
 		CharacterGUID: characterGUID,
-		RealmID:       root.RealmID,
+		RealmID:       s.realmID,
 	})
 
 	if err != nil {
@@ -431,7 +445,7 @@ func (s *GameSession) connectToGameServer(ctx context.Context, characterGUID uin
 
 	serversResult, err := s.serversRegistryClient.AvailableGameServersForMapAndRealm(s.ctx, &pbServ.AvailableGameServersForMapAndRealmRequest{
 		Api:     root.SupportedCharServiceVer,
-		RealmID: root.RealmID,
+		RealmID: s.realmID,
 		MapID:   mapIDToLogin,
 	})
 
@@ -567,7 +581,7 @@ func (s *GameSession) onWorldSocketClosed() {
 			char, socket, err = s.connectToGameServer(s.ctx, snap.GUID, nil, func(_ sockets.Socket) {
 				_, saveErr := s.charServiceClient.SavePlayerPosition(s.ctx, &pbChar.SavePlayerPositionRequest{
 					Api:      root.SupportedCharServiceVer,
-					RealmID:  root.RealmID,
+					RealmID:  s.realmID,
 					CharGUID: snap.GUID,
 					MapID:    snap.Map,
 					X:        snap.PositionX,
@@ -631,8 +645,8 @@ func (s *GameSession) onLoggedOut() {
 	}
 
 	err := s.eventsProducer.CharacterLoggedOut(&events.GWEventCharacterLoggedOutPayload{
-		RealmID:     root.RealmID,
-		GatewayID:   root.RetrievedGatewayID,
+		RealmID:     s.realmID,
+		GatewayID:   s.gatewayID,
 		CharGUID:    s.character.GUID,
 		CharName:    s.character.Name,
 		CharGuildID: s.character.GuildID,

@@ -145,7 +145,7 @@ func ForwardPacketToRandomGameServer(waitOpcodeToClose packet.Opcode) Handler {
 	return func(s *GameSession, ctx context.Context, p *packet.Packet) error {
 		serverResult, err := s.serversRegistryClient.RandomGameServerForRealm(ctx, &pbServ.RandomGameServerForRealmRequest{
 			Api:     root.SupportedServerRegistryVer,
-			RealmID: root.RealmID,
+			RealmID: s.realmID,
 		})
 		if err != nil {
 			return err
