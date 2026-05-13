@@ -31,6 +31,7 @@ func (f *friendsNatsListener) Listen() error {
 		}
 	})
 	if err != nil {
+		_ = f.Stop() // B52: roll back partial subscriptions.
 		return err
 	}
 
@@ -41,6 +42,7 @@ func (f *friendsNatsListener) Listen() error {
 		}
 	})
 	if err != nil {
+		_ = f.Stop()
 		return err
 	}
 
@@ -51,6 +53,7 @@ func (f *friendsNatsListener) Listen() error {
 		}
 	})
 	if err != nil {
+		_ = f.Stop()
 		return err
 	}
 
@@ -61,6 +64,7 @@ func (f *friendsNatsListener) Listen() error {
 		}
 	})
 	if err != nil {
+		_ = f.Stop()
 		return err
 	}
 

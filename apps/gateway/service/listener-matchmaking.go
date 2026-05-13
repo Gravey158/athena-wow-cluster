@@ -42,6 +42,8 @@ func (c *matchmakingNatsListener) Listen() error {
 		c.broadcaster.NewMatchmakingJoinedPVPQueueEvent(&eventPayload)
 	})
 	if err != nil {
+		// B52: roll back partial subscriptions before bailing.
+		_ = c.unsubscribe()
 		return err
 	}
 
@@ -86,6 +88,8 @@ func (c *matchmakingNatsListener) Listen() error {
 		c.broadcaster.NewMatchmakingInviteToBGOrArenaExpiredEvent(&eventPayload)
 	})
 	if err != nil {
+		// B52: roll back partial subscriptions before bailing.
+		_ = c.unsubscribe()
 		return err
 	}
 

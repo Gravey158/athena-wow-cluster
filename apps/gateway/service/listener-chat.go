@@ -53,6 +53,8 @@ func (c *chatNatsListener) Listen() error {
 		})
 	})
 	if err != nil {
+		// B52: roll back partial subscriptions before bailing.
+		_ = c.unsubscribe()
 		return err
 	}
 	c.subs = append(c.subs, sb)
@@ -85,6 +87,7 @@ func (c *chatNatsListener) Listen() error {
 		})
 	})
 	if err != nil {
+		_ = c.unsubscribe() // B52
 		return err
 	}
 	c.subs = append(c.subs, sbChannelMsg)
@@ -116,6 +119,7 @@ func (c *chatNatsListener) Listen() error {
 		})
 	})
 	if err != nil {
+		_ = c.unsubscribe() // B52
 		return err
 	}
 	c.subs = append(c.subs, sbChannelJoin)
@@ -146,6 +150,7 @@ func (c *chatNatsListener) Listen() error {
 		})
 	})
 	if err != nil {
+		_ = c.unsubscribe() // B52
 		return err
 	}
 	c.subs = append(c.subs, sbChannelLeft)
@@ -182,6 +187,7 @@ func (c *chatNatsListener) Listen() error {
 		})
 	})
 	if err != nil {
+		_ = c.unsubscribe() // B52
 		return err
 	}
 	c.subs = append(c.subs, sbChannelNotif)

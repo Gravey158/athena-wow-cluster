@@ -45,6 +45,8 @@ func (c *ServersRegistryListener) Listen() error {
 		}
 	})
 	if err != nil {
+		// B52: roll back partial subscriptions before bailing.
+		_ = c.unsubscribe()
 		return err
 	}
 
@@ -63,6 +65,8 @@ func (c *ServersRegistryListener) Listen() error {
 		}
 	})
 	if err != nil {
+		// B52: roll back partial subscriptions before bailing.
+		_ = c.unsubscribe()
 		return err
 	}
 

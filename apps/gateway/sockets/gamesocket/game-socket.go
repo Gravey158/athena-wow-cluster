@@ -31,7 +31,13 @@ type GameSocket struct {
 	sendChan chan *packet.Packet
 	readChan chan *packet.Packet
 
-	ctx context.Context
+	// B54: ctx + cancel are set once at construction and never reassigned.
+	// Previously ListenAndProcess overwrote s.ctx after start, which raced
+	// against external Send callers reading s.ctx. cancel is fired by
+	// defer in ListenAndProcess (or any future Close()) to unblock pending
+	// SendOrCancel callers cleanly.
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	accountRepo repo.AccountRepo
 
@@ -52,6 +58,7 @@ func NewGameSocket(
 	accountRepo repo.AccountRepo,
 	params session.GameSessionParams,
 ) sockets.Socket {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &GameSocket{
 		conn:          c,
 		packetsReader: sockets.NewPacketsReader(c, 4, packet.SourceGameClient),
@@ -64,9 +71,8 @@ func NewGameSocket(
 		accountRepo:   accountRepo,
 		sessionParams: params,
 		useEncryption: true,
-		// Default to Background so Send/SendPacket are safe before
-		// ListenAndProcess overrides ctx.
-		ctx: context.Background(),
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 }
 
@@ -107,11 +113,22 @@ func (s *GameSocket) Handshake() error {
 
 // ListenAndProcess listen for incoming messages and starts to handle them from here
 // BLOCKS WHILE CONNECTION IS OPEN
+//
+// The ctx parameter is propagated into s.ctx via a watcher goroutine so that
+// external parent cancellation fires s.cancel. The watcher exits as soon as
+// either side cancels, so it never leaks.
 func (s *GameSocket) ListenAndProcess(ctx context.Context) error {
-	newCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	defer s.cancel()
 
-	s.ctx = newCtx
+	if ctx.Done() != nil {
+		go func() {
+			select {
+			case <-ctx.Done():
+				s.cancel()
+			case <-s.ctx.Done():
+			}
+		}()
+	}
 
 	go func() {
 		for {
