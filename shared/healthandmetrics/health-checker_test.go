@@ -1,6 +1,7 @@
 package healthandmetrics
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -46,7 +47,7 @@ func Test_healthChecker_StartSkippingDelay(t *testing.T) {
 	obj := healthCheckObj("127.0.0.1:9000")
 	checker := NewHealthChecker(time.Millisecond*4, 1, &proc)
 	checker.AddHealthCheckObject(obj)
-	go checker.Start()
+	go checker.Start(context.Background())
 
 	time.Sleep(time.Millisecond * 13)
 
@@ -62,7 +63,7 @@ func Test_healthChecker_StartRespectDelay(t *testing.T) {
 	obj := healthCheckObj("127.0.0.1:9000")
 	checker := NewHealthChecker(time.Millisecond*10, 1, &proc)
 	checker.AddHealthCheckObject(obj)
-	go checker.Start()
+	go checker.Start(context.Background())
 
 	time.Sleep(time.Millisecond * 13)
 
@@ -77,7 +78,7 @@ func Test_healthChecker_StartWithAddingObjectsAfterStart(t *testing.T) {
 
 	obj := healthCheckObj("127.0.0.1:9000")
 	checker := NewHealthChecker(time.Millisecond*5, 1, &proc)
-	go checker.Start()
+	go checker.Start(context.Background())
 	time.Sleep(time.Millisecond * 1)
 
 	checker.AddHealthCheckObject(obj)

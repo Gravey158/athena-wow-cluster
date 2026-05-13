@@ -1,6 +1,7 @@
 package healthandmetrics
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -34,7 +35,8 @@ type MetricsConsumer interface {
 	AddMetricsObservable(MetricsObservable) error
 	RemoveMetricsObservable(MetricsObservable) error
 	AddObserver(MetricsObserver)
-	Start() error
+	// Start runs the periodic metrics-poll loop until ctx is canceled (B4).
+	Start(ctx context.Context) error
 }
 
 type MetricsReader interface {
@@ -99,50 +101,76 @@ func (m *metricsConsumerImpl) AddObserver(observer MetricsObserver) {
 	m.observers = append(m.observers, observer)
 }
 
-func (m *metricsConsumerImpl) Start() error {
-	go m.process(m.processorsCount)
+func (m *metricsConsumerImpl) Start(ctx context.Context) error {
+	go m.process(ctx, m.processorsCount)
 
 	for {
 		start := time.Now()
-		m.makeIteration()
+		if err := m.makeIteration(ctx); err != nil {
+			close(m.queue)
+			return nil
+		}
 		waitTime := m.delay - time.Since(start)
 		if waitTime > 0 {
-			time.Sleep(waitTime)
+			select {
+			case <-time.After(waitTime):
+			case <-ctx.Done():
+				close(m.queue)
+				return nil
+			}
+		} else if ctx.Err() != nil {
+			close(m.queue)
+			return nil
 		}
 	}
 }
 
-func (m *metricsConsumerImpl) process(processorsCount int) {
+func (m *metricsConsumerImpl) process(ctx context.Context, processorsCount int) {
 	for i := 0; i < processorsCount; i++ {
 		go func() {
 			for obj := range m.queue {
 				metrics, err := m.reader.Read(obj)
-				m.results <- metricsReadResult{
+				select {
+				case m.results <- metricsReadResult{
 					Observable:  obj,
 					MetricsRead: metrics,
 					Err:         err,
+				}:
+				case <-ctx.Done():
+					return
 				}
 			}
 		}()
 	}
 }
 
-func (m *metricsConsumerImpl) makeIteration() {
+func (m *metricsConsumerImpl) makeIteration(ctx context.Context) error {
 	m.objectsMu.Lock()
-	objectsCount := len(m.objects)
-	for i := range m.objects {
-		m.queue <- m.objects[i]
-	}
+	objects := make([]MetricsObservable, len(m.objects))
+	copy(objects, m.objects)
 	m.objectsMu.Unlock()
 
-	if objectsCount == 0 {
-		return
+	if len(objects) == 0 {
+		return nil
 	}
 
-	for i := 0; i < objectsCount; i++ {
-		result := <-m.results
-		m.handleResult(result)
+	for i := range objects {
+		select {
+		case m.queue <- objects[i]:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
+
+	for i := 0; i < len(objects); i++ {
+		select {
+		case result := <-m.results:
+			m.handleResult(result)
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 func (m *metricsConsumerImpl) handleResult(result metricsReadResult) {

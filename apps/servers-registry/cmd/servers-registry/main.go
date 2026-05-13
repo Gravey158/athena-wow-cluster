@@ -67,10 +67,10 @@ func main() {
 	defer rdb.Close()
 
 	healthChecker := healthandmetrics.NewHealthChecker(time.Second*4, 4, healthandmetrics.NewHttpHealthCheckProcessor(time.Second*15))
-	go healthChecker.Start()
+	go healthChecker.Start(mainContext) // B4: ctx-aware shutdown
 
 	metricsConsumer := healthandmetrics.NewMetricsConsumer(time.Second*5, 3, healthandmetrics.NewHttpPrometheusMetricsReader(time.Second))
-	go metricsConsumer.Start()
+	go metricsConsumer.Start(mainContext) // B4: ctx-aware shutdown
 
 	supportedRealms := conf.RealmsID
 	gameServersService, err := service.NewGameServer(

@@ -1,6 +1,7 @@
 package healthandmetrics
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
@@ -20,7 +21,9 @@ type HealthChecker interface {
 	RemoveHealthCheckObject(HealthCheckObject) error
 	AddSuccessObserver(HealthCheckSuccessObserver)
 	AddFailedObserver(HealthCheckFailedObserver)
-	Start() error
+	// Start runs the periodic health-check loop until ctx is canceled (B4).
+	// Previously Start() had no ctx and its goroutines leaked on shutdown.
+	Start(ctx context.Context) error
 }
 
 type HealthCheckProcessor interface {
@@ -102,35 +105,62 @@ func (h *healthChecker) AddFailedObserver(observer HealthCheckFailedObserver) {
 	h.failedObservers = append(h.failedObservers, observer)
 }
 
-func (h *healthChecker) Start() error {
-	go h.process(h.processorsCount)
+func (h *healthChecker) Start(ctx context.Context) error {
+	go h.process(ctx, h.processorsCount)
 
 	for {
 		start := time.Now()
-		h.makeIteration()
+		if err := h.makeIteration(ctx); err != nil {
+			// ctx canceled mid-iteration; close the worker-queue so workers
+			// drain + exit, then return cleanly.
+			close(h.queue)
+			return nil
+		}
 		waitTime := h.delay - time.Since(start)
 		if waitTime > 0 {
-			time.Sleep(waitTime)
+			select {
+			case <-time.After(waitTime):
+			case <-ctx.Done():
+				close(h.queue)
+				return nil
+			}
+		} else if ctx.Err() != nil {
+			close(h.queue)
+			return nil
 		}
 	}
 }
 
-func (h *healthChecker) makeIteration() {
+func (h *healthChecker) makeIteration(ctx context.Context) error {
+	// Copy the objects snapshot under the lock; release the lock before
+	// blocking on channel sends so AddHealthCheckObject can proceed in
+	// parallel.
 	h.objectsMu.Lock()
-	objectsCount := len(h.objects)
-	for i := range h.objects {
-		h.queue <- h.objects[i]
-	}
+	objects := make([]HealthCheckObject, len(h.objects))
+	copy(objects, h.objects)
 	h.objectsMu.Unlock()
 
-	if objectsCount == 0 {
-		return
+	if len(objects) == 0 {
+		return nil
 	}
 
-	for i := 0; i < objectsCount; i++ {
-		result := <-h.results
-		h.handleResult(result)
+	for i := range objects {
+		select {
+		case h.queue <- objects[i]:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
+
+	for i := 0; i < len(objects); i++ {
+		select {
+		case result := <-h.results:
+			h.handleResult(result)
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 func (h *healthChecker) handleResult(result healthCheckResult) {
@@ -153,13 +183,19 @@ func (h *healthChecker) handleResult(result healthCheckResult) {
 	}
 }
 
-func (h *healthChecker) process(processorsCount int) {
+func (h *healthChecker) process(ctx context.Context, processorsCount int) {
 	for i := 0; i < processorsCount; i++ {
 		go func() {
 			for obj := range h.queue {
-				h.results <- healthCheckResult{
+				// select-wrap the result-send so worker exits on ctx cancel
+				// even if nobody is reading the result channel.
+				select {
+				case h.results <- healthCheckResult{
 					obj: obj,
 					err: h.processor.Check(obj),
+				}:
+				case <-ctx.Done():
+					return
 				}
 			}
 		}()
