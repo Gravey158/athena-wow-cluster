@@ -65,6 +65,10 @@ func initLib(realmID uint32) (*config.Config, healthandmetrics.Server, ShutdownF
 
 	SetupMatchmakingConnection(ctx, cfg)
 
+	// worldDBConn is nil when WORLD_DB_SERVICE_ADDRESS is unset (ADR-007
+	// Phase 2: opt-in per pod). Shutdown is safe to call on nil.
+	worldDBConn := SetupWorldDBConnection(cfg)
+
 	grpcListener, grpcServer := SetupGRPCService(cfg)
 	go func() {
 		log.Info().Msg("🚀 gRPC Service started...")
@@ -101,6 +105,12 @@ func initLib(realmID uint32) (*config.Config, healthandmetrics.Server, ShutdownF
 
 		if err = guidConn.Close(); err != nil {
 			log.Fatal().Err(err).Msg("failed to close guid service connection")
+		}
+
+		if worldDBConn != nil {
+			if err = worldDBConn.Close(); err != nil {
+				log.Err(err).Msg("failed to close worlddb connection")
+			}
 		}
 
 		log.Info().Msg("👍 Sidecar successfully stopped.")

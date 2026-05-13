@@ -48,6 +48,7 @@ COPY --from=build-sidecar ./go/src/github.com/walkline/ToCloud9/game-server/libs
 COPY --from=build-sidecar ./go/src/github.com/walkline/ToCloud9/game-server/libsidecar/player-items-api.h ./repo/deps/libsidecar/include/player-items-api.h
 COPY --from=build-sidecar ./go/src/github.com/walkline/ToCloud9/game-server/libsidecar/player-money-api.h ./repo/deps/libsidecar/include/player-money-api.h
 COPY --from=build-sidecar ./go/src/github.com/walkline/ToCloud9/game-server/libsidecar/player-interactions-api.h ./repo/deps/libsidecar/include/player-interactions-api.h
+COPY --from=build-sidecar ./go/src/github.com/walkline/ToCloud9/game-server/libsidecar/world-db.h ./repo/deps/libsidecar/include/world-db.h
 
 WORKDIR /repo
 

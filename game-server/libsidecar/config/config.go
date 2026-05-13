@@ -23,6 +23,11 @@ type Config struct {
 	// MatchmakingServiceAddress is address of matchmaking service
 	MatchmakingServiceAddress string `yaml:"matchmakingServiceAddress" env:"MATCHMAKING_SERVICE_ADDRESS" env-default:"localhost:8994"`
 
+	// WorldDBServiceAddress is address of the worlddbserver microservice
+	// (ADR-007). Empty string disables the gRPC path entirely; the AC
+	// ObjectMgr falls back to MySQL load.
+	WorldDBServiceAddress string `yaml:"worldDBServiceAddress" env:"WORLD_DB_SERVICE_ADDRESS" env-default:""`
+
 	// GuidProviderServiceAddress is address of service that provides guids to use
 	GuidProviderServiceAddress string `yaml:"guidProviderServiceAddress" env:"GUID_PROVIDER_SERVICE_ADDRESS" env-default:"localhost:8996"`
 
