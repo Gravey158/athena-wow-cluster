@@ -64,6 +64,12 @@ func (s *MatchmakingServer) BattlegroundQueueDataForPlayer(ctx context.Context, 
 			if err != nil {
 				return nil, err
 			}
+			// B39: in-mem repo returns (nil, nil) on miss. Without this guard
+			// the next line nil-deref'd inside a gRPC handler -- panic'd the
+			// whole microservice.
+			if bg == nil {
+				continue
+			}
 			slots[i] = &pb.BattlegroundQueueDataForPlayerResponse_QueueSlot{
 				BgTypeID: uint32(bg.BattlegroundTypeID),
 				Status:   pb.PlayerQueueStatus_Invited,

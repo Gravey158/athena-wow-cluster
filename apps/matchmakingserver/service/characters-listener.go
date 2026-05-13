@@ -10,15 +10,20 @@ import (
 )
 
 type CharactersListener struct {
+	// ctx is the process-lifetime context. Used inside NATS subscription
+	// callbacks (which have no caller-supplied ctx) so a SIGTERM cancels
+	// any in-flight PlayerBecomeOffline calls. Previously: context.Background(). (B41)
+	ctx  context.Context
 	bg   BattleGroundService
 	nc   *nats.Conn
 	subs []*nats.Subscription
 }
 
-func NewCharactersListener(bgService BattleGroundService, nc *nats.Conn) *CharactersListener {
+func NewCharactersListener(ctx context.Context, bgService BattleGroundService, nc *nats.Conn) *CharactersListener {
 	return &CharactersListener{
-		bg: bgService,
-		nc: nc,
+		ctx: ctx,
+		bg:  bgService,
+		nc:  nc,
 	}
 }
 
@@ -31,7 +36,7 @@ func (c *CharactersListener) Listen() error {
 			return
 		}
 
-		err = c.bg.PlayerBecomeOffline(context.Background(), loggedOutP.CharGUID, loggedOutP.RealmID)
+		err = c.bg.PlayerBecomeOffline(c.ctx, loggedOutP.CharGUID, loggedOutP.RealmID)
 		if err != nil {
 			log.Error().Err(err).Msg("can't remove character in GWEventCharacterLoggedOut event")
 			return
@@ -53,7 +58,7 @@ func (c *CharactersListener) Listen() error {
 		}
 
 		for _, char := range payload.CharactersGUID {
-			err = c.bg.PlayerBecomeOffline(context.Background(), char, payload.RealmID)
+			err = c.bg.PlayerBecomeOffline(c.ctx, char, payload.RealmID)
 			if err != nil {
 				log.Error().Err(err).Msg("can't remove character in GWEventCharacterLoggedOut event")
 			}

@@ -115,6 +115,12 @@ type battleGroundService struct {
 	eventsProducer         events.MatchmakingServiceProducer
 	serversRegistryClient  pbServRegistry.ServersRegistryServiceClient
 	gameserverGRPCConnMgr  conn.GameServerGRPCConnMgr
+
+	// ctx is the process-lifetime context. Used by callbacks that have no
+	// caller-supplied ctx (NATS-driven OnGameServerRemoved, the cross-realm
+	// observer methods). Previously these did context.Background() which
+	// meant a SIGTERM could not cancel mid-query DB work. (B41)
+	ctx context.Context
 }
 
 func (s *battleGroundService) BattlegroundsThatNeedPlayers(ctx context.Context, battlegroundTypeID battleground.QueueTypeID, bracketID uint8, battleGroupID, realmID uint32) ([]battleground.Battleground, error) {
@@ -139,6 +145,7 @@ func (s *battleGroundService) BattlegroundsThatNeedPlayers(ctx context.Context, 
 }
 
 func NewBattleGroundService(
+	ctx context.Context,
 	templatesRepo repo.BattlegroundTemplesRepo,
 	battleGroupsRepo repo.BattleGroupsRepository,
 	battlegroundsRepo repo.BattlegroundRepo,
@@ -148,12 +155,13 @@ func NewBattleGroundService(
 	gameserverGRPCConnMgr conn.GameServerGRPCConnMgr,
 	realmIDs []uint32,
 ) (BattleGroundService, error) {
-	templates, err := templatesRepo.GetAll(context.Background())
+	templates, err := templatesRepo.GetAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("cannot get battleground templates: %w", err)
 	}
 
 	service := battleGroundService{
+		ctx:                        ctx,
 		playersQueueOrBattleground: map[QueuesByRealmAndPlayerKey][]QueueOrBattlegroundLink{},
 		battleGroupsRepo:           battleGroupsRepo,
 		battlegroundsRepo:          battlegroundsRepo,
@@ -167,7 +175,7 @@ func NewBattleGroundService(
 		service.bgTemplates[template.TypeID] = &template
 	}
 
-	battlegroups, err := battleGroupsRepo.AllBattleGroupsIDs(context.Background())
+	battlegroups, err := battleGroupsRepo.AllBattleGroupsIDs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("cannot get all battlegroups: %w", err)
 	}
@@ -219,8 +227,10 @@ func selectRandomTemplate(templates []repo.BattlegroundTemplate) *repo.Battlegro
 		return nil
 	}
 
-	// Generate a random number in the range [1, totalWeight]
-	rand.Seed(time.Now().UnixNano())
+	// B40: dropped `rand.Seed(time.Now().UnixNano())`. Since Go 1.20 the
+	// default Source is auto-seeded once at startup; calling Seed again
+	// every invocation actually resets it to a clock-derived value that
+	// can collide across rapid back-to-back calls (and Seed is deprecated).
 	randomWeight := rand.Intn(totalWeight) + 1
 
 	currentWeight := 0
@@ -352,14 +362,14 @@ func (s *battleGroundService) AddGroupToQueue(
 // OnNoCrossRealmNodesAvailable is called when there were no cross-realm nodes available but now some nodes are available.
 // This function should move the queued groups from the realm queue to the battle group queue.
 func (s *battleGroundService) OnNoCrossRealmNodesAvailable() {
-	realms, err := s.battleGroupsRepo.AllRealmsInBattleGroups(context.Background())
+	realms, err := s.battleGroupsRepo.AllRealmsInBattleGroups(s.ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("cannot get all realms")
 		return
 	}
 
 	for _, realm := range realms {
-		battlegroupID, err := s.battleGroupsRepo.BattleGroupIDByRealmID(context.Background(), realm)
+		battlegroupID, err := s.battleGroupsRepo.BattleGroupIDByRealmID(s.ctx, realm)
 		if err != nil {
 			log.Error().Err(err).Msg("cannot get BattleGroupIDByRealmID")
 			continue
@@ -403,7 +413,7 @@ func (s *battleGroundService) OnNoCrossRealmNodesAvailable() {
 // OnNoCrossRealmNodesUnAvailable is called when there are no cross-realm nodes available.
 // This function should handle the transition of queued groups from the battle group queue back to the realm queue.
 func (s *battleGroundService) OnNoCrossRealmNodesUnAvailable() {
-	battlegroups, err := s.battleGroupsRepo.AllBattleGroupsIDs(context.Background())
+	battlegroups, err := s.battleGroupsRepo.AllBattleGroupsIDs(s.ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("cannot get all battlegroups")
 		return
@@ -447,7 +457,7 @@ func (s *battleGroundService) OnNoCrossRealmNodesUnAvailable() {
 // OnGameServerRemoved called when game server node removed because it stopped, or it's unhealthy.
 // We need to remove all associated battlegrounds, otherwise we might still add players to those battlegrounds.
 func (s *battleGroundService) OnGameServerRemoved(gs *events.ServerRegistryEventGSRemovedPayload) {
-	bgs, err := s.battlegroundsRepo.DeleteAllWithGameServerAddress(context.Background(), gs.GameServer.Address)
+	bgs, err := s.battlegroundsRepo.DeleteAllWithGameServerAddress(s.ctx, gs.GameServer.Address)
 	if err != nil {
 		log.Error().Err(err).Str("address", gs.GameServer.Address).Msg("cannot delete bgs with game server address")
 	}

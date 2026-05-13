@@ -83,6 +83,7 @@ func main() {
 
 	gameserverConnMgr := conn.NewGameServerGRPCConnMgr()
 	bgService, err := service.NewBattleGroundService(
+		ctx,
 		repo.NewMySQLBattlegroundTemplateRepo(wdb),
 		battlegroupsRepo,
 		repo.NewBattlegroundInMemRepo(),
@@ -96,7 +97,7 @@ func main() {
 		log.Fatal().Err(err).Msg("can't create BattleGroundService service")
 	}
 
-	charLis := service.NewCharactersListener(bgService, nc)
+	charLis := service.NewCharactersListener(ctx, bgService, nc)
 	if err = charLis.Listen(); err != nil {
 		log.Fatal().Err(err).Msg("can't start char listener")
 	}
