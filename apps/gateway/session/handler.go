@@ -162,7 +162,9 @@ func ForwardPacketToRandomGameServer(waitOpcodeToClose packet.Opcode) Handler {
 
 		go socket.ListenAndProcess(s.ctx)
 		newCtx, cancel := context.WithTimeout(s.ctx, time.Minute)
-		waitDone := make(chan struct{})
+		// B5: buffered so the deferred send below never blocks if the conditional
+		// `<-waitDone` (when waitOpcodeToClose == 0) is skipped.
+		waitDone := make(chan struct{}, 1)
 		go func() {
 			defer cancel()
 			defer func() { waitDone <- struct{}{} }()
@@ -173,16 +175,21 @@ func ForwardPacketToRandomGameServer(waitOpcodeToClose packet.Opcode) Handler {
 					if !open {
 						return
 					}
-					s.gameSocket.WriteChannel() <- p
+					// B8: select-wrap so a dead client gamesocket doesn't block this goroutine.
+					select {
+					case s.gameSocket.WriteChannel() <- p:
+					case <-newCtx.Done():
+						return
+					}
 					if p.Opcode == waitOpcodeToClose {
 						socket.Close()
 						return
 					}
 
 				case <-newCtx.Done():
-					if s.worldSocket != nil {
-						s.worldSocket.Close()
-					}
+					// B7: close the one-off socket created in this function,
+					// not the player's main worldserver connection (s.worldSocket).
+					socket.Close()
 					return
 				}
 			}

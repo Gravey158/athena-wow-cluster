@@ -53,8 +53,11 @@ func NewGameSocket(
 	return &GameSocket{
 		conn:          c,
 		packetsReader: sockets.NewPacketsReader(c, 4, packet.SourceGameClient),
-		sendChan:      make(chan *packet.Packet, 10),
-		readChan:      make(chan *packet.Packet, 10),
+		// B16: 10 was too tight for burst load (SMsgUpdateObject when a player
+		// enters a crowded zone easily produces 50+ packets at once). 256
+		// gives breathing room without unbounded memory growth.
+		sendChan:      make(chan *packet.Packet, 256),
+		readChan:      make(chan *packet.Packet, 256),
 		logger:        log.Logger,
 		accountRepo:   accountRepo,
 		sessionParams: params,
