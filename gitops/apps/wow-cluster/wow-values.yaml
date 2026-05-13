@@ -37,14 +37,18 @@ databases:
   # 'wow-databases-config' (sealed) provides connection strings directly.
 
 # Global resources block consumed by all service templates (chart quirk -- one
-# .Values.resources block, no per-service tuning yet). Mid-tier sizing;
-# revisit in Phase 4 perf with profiling data.
+# .Values.resources block, no per-service tuning yet).
+#
+# Sized for cluster capacity: 3 workers x 4 CPU = 12 CPU total, shared with
+# every other Athena workload. With ~12 ToCloud9 pods + 3 NATS + 3 Galera,
+# we keep CPU requests low so all pods fit. gameserver_ac specifically can
+# burst to limit when needed. Revisit in Phase 4 perf when we have profiling.
 resources:
   requests:
-    cpu: 500m
-    memory: 1Gi
+    cpu: 100m
+    memory: 256Mi
   limits:
-    memory: 4Gi
+    memory: 2Gi
 
 # External exposure handled by our own LoadBalancer services in
 # gitops/apps/wow-cluster/external-services.yaml (MetalLB-pinned .72/.73).
