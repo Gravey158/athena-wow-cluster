@@ -112,6 +112,10 @@ func (s *GameSession) CreateCharacter(ctx context.Context, p *packet.Packet) err
 	newCtx, cancel := context.WithTimeout(s.ctx, time.Second*20)
 	defer cancel()
 
+	// B24 fix: signal channel for SMsgAuthResponse so we can replace the
+	// blind 300ms sleep with an explicit wait for AC's WorldSession-ready
+	// signal. Same approach as B10 in connectToGameServerWithAddress.
+	authReady := make(chan struct{}, 1)
 	waitDone := make(chan struct{})
 	go func() {
 		defer func() { waitDone <- struct{}{} }()
@@ -121,6 +125,16 @@ func (s *GameSession) CreateCharacter(ctx context.Context, p *packet.Packet) err
 			case p, open := <-socket.ReadChannel():
 				if !open {
 					return
+				}
+				if p.Opcode == packet.SMsgAuthResponse {
+					// Signal main flow that worldserver is ready for CMsgCharCreate.
+					// Don't forward to client -- gateway sent its own auth response
+					// during the earlier client-side handshake.
+					select {
+					case authReady <- struct{}{}:
+					default:
+					}
+					continue
 				}
 				// B9: select-wrapped so a slow/dead gamesocket doesn't block.
 				sockets.SendOrCancel(s.ctx, s.gameSocket.WriteChannel(), p)
@@ -142,8 +156,15 @@ func (s *GameSession) CreateCharacter(ctx context.Context, p *packet.Packet) err
 
 	socket.SendPacket(s.authPacket)
 
-	// we need to give some time to add session on the world side
-	time.Sleep(time.Millisecond * 300)
+	// B24: wait for SMsgAuthResponse instead of magic 300ms sleep.
+	// AC sends this from WorldSession::InitializeSessionCallback after the
+	// WorldSession has been fully added to the session manager.
+	select {
+	case <-authReady:
+	case <-newCtx.Done():
+		sendCreateFailed()
+		return fmt.Errorf("timeout waiting for worldserver auth response in CreateCharacter")
+	}
 
 	socket.SendPacket(p)
 
@@ -191,6 +212,9 @@ func (s *GameSession) DeleteCharacter(ctx context.Context, p *packet.Packet) err
 	newCtx, cancel := context.WithTimeout(s.ctx, time.Second*5)
 	defer cancel()
 
+	// B24-cousin: same signal-channel pattern as CreateCharacter to replace
+	// the magic 300ms sleep with an explicit SMsgAuthResponse wait.
+	authReady := make(chan struct{}, 1)
 	waitDone := make(chan struct{})
 	go func() {
 		defer func() { waitDone <- struct{}{} }()
@@ -200,6 +224,13 @@ func (s *GameSession) DeleteCharacter(ctx context.Context, p *packet.Packet) err
 			case p, open := <-socket.ReadChannel():
 				if !open {
 					return
+				}
+				if p.Opcode == packet.SMsgAuthResponse {
+					select {
+					case authReady <- struct{}{}:
+					default:
+					}
+					continue
 				}
 				// B9: select-wrapped so a slow/dead gamesocket doesn't block.
 				sockets.SendOrCancel(s.ctx, s.gameSocket.WriteChannel(), p)
@@ -221,8 +252,13 @@ func (s *GameSession) DeleteCharacter(ctx context.Context, p *packet.Packet) err
 
 	socket.SendPacket(s.authPacket)
 
-	// we need to give some time to add session on the world side
-	time.Sleep(time.Millisecond * 300)
+	// B24-cousin: wait for SMsgAuthResponse instead of magic 300ms sleep.
+	select {
+	case <-authReady:
+	case <-newCtx.Done():
+		sendDelFailed()
+		return fmt.Errorf("timeout waiting for worldserver auth response in DeleteCharacter")
+	}
 
 	socket.SendPacket(p)
 
@@ -235,7 +271,12 @@ func (s *GameSession) DeleteCharacter(ctx context.Context, p *packet.Packet) err
 	default:
 	}
 
-	// Let's wait some moment because delete command may take some time on worldserver side.
+	// B25 (deferred): the "delete command may take some time on worldserver
+	// side" sleep is a race-by-sleep waiting for AC to finish the DB
+	// transaction. Different shape from B10/B24 -- no specific opcode signals
+	// completion, AC just runs the delete-character SQL async. A proper fix
+	// would need either an AC-side ack opcode (cross-language) or polling
+	// the characters DB for absence. Defer.
 	time.Sleep(time.Second * 1)
 
 	return nil
