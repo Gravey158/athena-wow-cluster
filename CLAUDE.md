@@ -18,7 +18,7 @@ This file + the ADRs in `docs/adr/` are the next sources of truth.
 
 - **Do not touch the `athena-cluster` repo** beyond a minimal App-of-Apps pointer. The exact mechanism is the subject of ADR 002 (open).
 - **Do not touch the live `gameserver-wow` namespace** on Athena. We run parallel in `wow-cluster` ns. Existing realm + wow-panel keep running.
-- **MetalLB**: `10.10.30.64/.65` are taken by `gameserver-wow`. New services pull from `homelab-pool` (range `10.10.30.60-80`); planned: `.66` (auth) and `.67` (game-lb). Verify free at deploy time.
+- **MetalLB**: `homelab-pool` is `10.10.30.60-80`. Verified occupancy as of 2026-05-13: `.60` traefik, `.61-.63` streaming, `.64-.65` gameserver-wow, `.66-.71` pelican wings. **Free: .72-.80 (9 IPs).** Planned: `.72` (auth) and `.73` (game-lb). Re-verify at deploy time — pelican-panel adds wings dynamically.
 - **Self-hosted runner** (Phase 0.1, ns `wow-ci`): workflows from PRs must not run on self-hosted. Only `main`/tag triggers may use `runs-on: self-hosted`.
 - **Sealed Secrets** for DB/NATS creds — reuse `~/.config/sops/age/keys.txt`, no new key id.
 - **No CataclysmMoP / 4.x / 5.x scope creep**. 3.3.5a only.
