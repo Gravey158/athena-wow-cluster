@@ -1,8 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -55,6 +60,23 @@ func main() {
 	}
 	defer l.Close()
 
+	// B38: process-lifetime context for ctx-aware shutdown of session DB calls.
+	// Previously authserver had no SIGTERM handler at all -- mid-auth
+	// UpdateAccount writes could be hard-killed by container runtime.
+	mainContext, mainCancel := context.WithCancel(context.Background())
+	defer mainCancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		sig := <-sigCh
+		fmt.Println("")
+		log.Info().Msgf("🧨 Got signal %v, attempting graceful shutdown...", sig)
+		mainCancel()
+		// Closing the listener unblocks the Accept loop with an error.
+		_ = l.Close()
+	}()
+
 	log.Info().
 		Str("address", l.Addr().String()).
 		Msg("🚀 Auth Server started!")
@@ -62,14 +84,19 @@ func main() {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
+			// On SIGTERM the listener is closed above; exit cleanly here.
+			if mainContext.Err() != nil {
+				log.Info().Msg("👍 Auth Server stopped accepting; shutdown.")
+				return
+			}
 			log.Fatal().Err(err).Msg("can't accept connection")
 		}
 
-		s := session.NewAuthSession(conn, authRepo, realmService)
-		go func() {
+		go func(c net.Conn) {
+			s := session.NewAuthSession(mainContext, c, authRepo, realmService)
 			// blocks until connection close
 			s.ListenAndProcess()
-		}()
+		}(conn)
 	}
 }
 

@@ -75,10 +75,17 @@ type AuthSession struct {
 	status         Status
 	account        *repo.Account
 	reconnectProof []byte
+
+	// ctx is the process/session-lifetime context. Previously the session
+	// handlers used context.TODO() for DB calls -- if the process was
+	// SIGTERM'd mid-auth, an UpdateAccount could be killed mid-transaction
+	// leaving stale SessionKeyAuth state. (B38)
+	ctx context.Context
 }
 
-func NewAuthSession(conn net.Conn, accountRepo repo.AccountRepo, realmService service.RealmService) *AuthSession {
+func NewAuthSession(ctx context.Context, conn net.Conn, accountRepo repo.AccountRepo, realmService service.RealmService) *AuthSession {
 	return &AuthSession{
+		ctx:          ctx,
 		conn:         conn,
 		logger:       log.Logger.With().Str("address", conn.RemoteAddr().String()).Logger(),
 		accountRepo:  accountRepo,
@@ -185,7 +192,7 @@ func (s *AuthSession) HandleReconnectChallenge() error {
 	s.logger = s.logger.With().Str("login", username).Logger()
 	s.logger.Debug().Interface("payload", &d).Msg("Received reconnect challenge")
 
-	s.account, err = s.accountRepo.AccountByUserName(context.TODO(), username)
+	s.account, err = s.accountRepo.AccountByUserName(s.ctx, username)
 	if err != nil {
 		return err
 	}
@@ -282,7 +289,7 @@ func (s *AuthSession) HandleLogonChallenge() error {
 	s.logger = s.logger.With().Str("login", username).Logger()
 	s.logger.Debug().Interface("payload", &d).Msg("Received login challenge")
 
-	s.account, err = s.accountRepo.AccountByUserName(context.TODO(), username)
+	s.account, err = s.accountRepo.AccountByUserName(s.ctx, username)
 	if err != nil {
 		return err
 	}
@@ -339,7 +346,7 @@ func (s *AuthSession) HandleLogonProof() error {
 	}
 
 	s.account.SessionKeyAuth = K
-	err = s.accountRepo.UpdateAccount(context.TODO(), s.account)
+	err = s.accountRepo.UpdateAccount(s.ctx, s.account)
 	if err != nil {
 		return err
 	}
@@ -387,7 +394,7 @@ func (s *AuthSession) HandleRealmList() error {
 		return err
 	}
 
-	realmList, err = s.realmService.RealmListForAccount(context.TODO(), s.account)
+	realmList, err = s.realmService.RealmListForAccount(s.ctx, s.account)
 	if err != nil {
 		return err
 	}
