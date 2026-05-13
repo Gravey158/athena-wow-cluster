@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net"
@@ -32,6 +33,12 @@ func main() {
 	}
 
 	log.Logger = conf.Logger()
+
+	// B59: process-lifetime context for ctx-aware shutdown of NATS
+	// listener callbacks. Previously each listener used context.TODO()
+	// for its repo writes.
+	mainContext, mainCancel := context.WithCancel(context.Background())
+	defer mainCancel()
 
 	// nats setup
 	nc, err := nats.Connect(
@@ -106,7 +113,7 @@ func main() {
 	}
 	defer gwEventsConsumer.Stop()
 
-	srHandler := service.NewServersRegistryListener(onlineCharsRepo, events.NewCharactersServiceProducerNatsJSON(nc, charserver.Ver), nc)
+	srHandler := service.NewServersRegistryListener(mainContext, onlineCharsRepo, events.NewCharactersServiceProducerNatsJSON(nc, charserver.Ver), nc)
 	err = srHandler.Listen()
 	if err != nil {
 		log.Fatal().Err(err).Msg("can't listen to servers registry updates")
@@ -129,6 +136,7 @@ func main() {
 		sig := <-sigCh
 		fmt.Println("")
 		log.Info().Msgf("🧨 Got signal %v, attempting graceful shutdown...", sig)
+		mainCancel()
 		grpcServer.GracefulStop()
 	}()
 

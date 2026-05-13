@@ -11,13 +11,17 @@ import (
 )
 
 type CharactersListener struct {
+	// B59: process-lifetime ctx; previously callbacks used context.TODO()
+	// for charRepo.Add / charRepo.Remove.
+	ctx      context.Context
 	charRepo repo.CharactersOnline
 	nc       *nats.Conn
 	subs     []*nats.Subscription
 }
 
-func NewCharactersListener(charRepo repo.CharactersOnline, nc *nats.Conn) *CharactersListener {
+func NewCharactersListener(ctx context.Context, charRepo repo.CharactersOnline, nc *nats.Conn) *CharactersListener {
 	return &CharactersListener{
+		ctx:      ctx,
 		charRepo: charRepo,
 		nc:       nc,
 	}
@@ -32,7 +36,7 @@ func (c *CharactersListener) Listen() error {
 			return
 		}
 
-		err = c.charRepo.Add(context.TODO(), &repo.Character{
+		err = c.charRepo.Add(c.ctx, &repo.Character{
 			RealmID:     loggedInP.RealmID,
 			GatewayID:   loggedInP.GatewayID,
 			CharGUID:    loggedInP.CharGUID,
@@ -69,7 +73,7 @@ func (c *CharactersListener) Listen() error {
 			return
 		}
 
-		err = c.charRepo.Remove(context.TODO(), loggedOutP.RealmID, loggedOutP.CharGUID)
+		err = c.charRepo.Remove(c.ctx, loggedOutP.RealmID, loggedOutP.CharGUID)
 		if err != nil {
 			log.Error().Err(err).Msg("can't remove character in GWEventCharacterLoggedOut event")
 			return

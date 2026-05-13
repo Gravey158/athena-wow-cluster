@@ -11,14 +11,19 @@ import (
 )
 
 type ServersRegistryListener struct {
+	// B59: process-lifetime ctx. Both NATS callbacks below call
+	// RemoveAllWithGatewayID -- previously with context.TODO() so SIGTERM
+	// couldn't cancel a mid-flight realm-wide character purge.
+	ctx      context.Context
 	charRepo repo.CharactersOnline
 	nc       *nats.Conn
 	subs     []*nats.Subscription
 	producer events.CharactersServiceProducer
 }
 
-func NewServersRegistryListener(charRepo repo.CharactersOnline, producer events.CharactersServiceProducer, nc *nats.Conn) *ServersRegistryListener {
+func NewServersRegistryListener(ctx context.Context, charRepo repo.CharactersOnline, producer events.CharactersServiceProducer, nc *nats.Conn) *ServersRegistryListener {
 	return &ServersRegistryListener{
+		ctx:      ctx,
 		charRepo: charRepo,
 		nc:       nc,
 		producer: producer,
@@ -35,7 +40,7 @@ func (c *ServersRegistryListener) Listen() error {
 			return
 		}
 
-		userIDs, err := c.charRepo.RemoveAllWithGatewayID(context.TODO(), payload.RealmID, payload.ID)
+		userIDs, err := c.charRepo.RemoveAllWithGatewayID(c.ctx, payload.RealmID, payload.ID)
 		if err != nil {
 			log.Error().Err(err).Msg("can't delete characters in ServerRegistryEventGWRemovedUnhealthy event")
 			return
@@ -69,7 +74,7 @@ func (c *ServersRegistryListener) Listen() error {
 			return
 		}
 
-		_, err = c.charRepo.RemoveAllWithGatewayID(context.TODO(), payload.RealmID, payload.GatewayID)
+		_, err = c.charRepo.RemoveAllWithGatewayID(c.ctx, payload.RealmID, payload.GatewayID)
 		if err != nil {
 			log.Error().Err(err).Msg("can't delete characters in CharEventCharsDisconnectedUnhealthyGW event")
 			return
