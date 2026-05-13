@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: wow-cluster
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  project: default
+  sources:
+    # The chart itself, from our hardfork repo.
+    - repoURL: https://github.com/Gravey158/athena-wow-cluster
+      targetRevision: HEAD
+      path: chart
+      helm:
+        releaseName: wow
+        valueFiles:
+          - $values/gitops/apps/wow-cluster/wow-values.yaml
+    # Values file lives alongside the rest of the gitops manifests.
+    - repoURL: https://github.com/Gravey158/athena-wow-cluster
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: wow-cluster
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

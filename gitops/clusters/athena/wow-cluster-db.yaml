@@ -13,7 +13,7 @@ spec:
     path: gitops/apps/wow-cluster
     directory:
       recurse: false
-      include: '{namespace.yaml,my-cnf-configmap.yaml,mariadb-creds-sealed-secret.yaml,mariadb.yaml,databases.yaml,db-user.yaml,db-grants.yaml}'
+      include: '{namespace.yaml,my-cnf-configmap.yaml,mariadb-creds-sealed-secret.yaml,wow-databases-config-sealed-secret.yaml,mariadb.yaml,databases.yaml,db-user.yaml,db-grants.yaml,external-services.yaml}'
   destination:
     server: https://kubernetes.default.svc
     namespace: wow-cluster

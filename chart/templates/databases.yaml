@@ -1,3 +1,17 @@
+{{- /*
+  When .Values.databases.externalSecret is true, this entire file is skipped
+  and the chart consumer is expected to provide a pre-existing Secret named
+  '{{ .Release.Name }}-databases-config' with the same keys as below
+  (user, password, schema_type, AUTH_DB_CONNECTION, CHAR_DB_CONNECTION,
+   WORLD_DB_CONNECTION, AC_LOGIN_DATABASE_INFO, AC_WORLD_DATABASE_INFO,
+   AC_CHARACTER_DATABASE_INFO).
+
+  Rationale: hardfork modification by athena-wow-cluster -- the upstream
+  chart inlines DB credentials into values.yaml plaintext, which is unsafe
+  for GitOps. See docs/adr/003-chart-modification-external-secret.md in
+  github.com/Gravey158/athena-wow-cluster.
+*/ -}}
+{{- if not .Values.databases.externalSecret -}}
 # TODO: convert to secret
 kind: ConfigMap
 apiVersion: v1
@@ -48,3 +62,4 @@ stringData:
   AC_WORLD_DATABASE_INFO: "{{ .Release.Name }}-mysql-headless;3306;{{ .Values.databases.db_user }};{{ .Values.databases.db_password }};{{ .Values.databases.db_world_name }}"
   AC_CHARACTER_DATABASE_INFO: "{{ .Release.Name }}-mysql-headless;3306;{{ .Values.databases.db_user }};{{ .Values.databases.db_password }};{{ .Values.databases.db_characters_name }}"
 {{ end }}
+{{- end }}{{/* end if not externalSecret */}}

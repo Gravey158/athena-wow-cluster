@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wow-authserver-lb
+  namespace: wow-cluster
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: 10.10.30.72
+    argocd.argoproj.io/sync-wave: "20"
+  labels:
+    purpose: external-lb
+    project: athena-wow-cluster
+spec:
+  type: LoadBalancer
+  loadBalancerClass: metallb.universe.tf/metallb
+  externalTrafficPolicy: Local
+  selector:
+    app: wow-tocloud9-authserver   # release=wow + chart=tocloud9
+  ports:
+    - name: auth
+      port: 3724
+      targetPort: 3724
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wow-gateway-lb
+  namespace: wow-cluster
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: 10.10.30.73
+    argocd.argoproj.io/sync-wave: "20"
+  labels:
+    purpose: external-lb
+    project: athena-wow-cluster
+spec:
+  type: LoadBalancer
+  loadBalancerClass: metallb.universe.tf/metallb
+  externalTrafficPolicy: Local
+  selector:
+    app: wow-tocloud9-gateway
+  ports:
+    - name: game
+      port: 32766
+      targetPort: 32766
+      protocol: TCP

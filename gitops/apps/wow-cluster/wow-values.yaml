@@ -1,0 +1,80 @@
+# Helm values overlay for athena-wow-cluster -- 'wow' release in ns wow-cluster.
+#
+# Image tag: upstream walkline v0.0.4 for now. Switch to our AC-fork image
+# (ghcr.io/gravey158/athena-wow-core) for gameserver_ac once Phase 0.2 builds it.
+
+tc9ImagesTag: &defaultImagesTag "v0.0.4"
+
+# Subcharts.
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+nats:
+  enabled: true
+  config:
+    cluster:
+      enabled: true
+      replicas: 3
+    jetstream:
+      enabled: true
+mysql:
+  enabled: false   # external Galera in this ns via mariadb-operator
+
+databases:
+  externalSecret: true   # hardfork addition; see ADR 003
+  external_db_hostname: "wow-galera-primary.wow-cluster.svc.cluster.local"
+  external_db_port: "3306"
+  db_schema_type: ac
+  db_user: acore
+  db_auth_name: acore_auth
+  db_characters_name: acore_characters
+  db_world_name: acore_world
+  # db_password is ignored when externalSecret=true. The Secret
+  # 'wow-databases-config' (sealed) provides connection strings directly.
+
+# Global resources block consumed by all service templates (chart quirk -- one
+# .Values.resources block, no per-service tuning yet). Mid-tier sizing;
+# revisit in Phase 4 perf with profiling data.
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    memory: 4Gi
+
+# External exposure handled by our own LoadBalancer services in
+# gitops/apps/wow-cluster/external-services.yaml (MetalLB-pinned .72/.73).
+authserver:
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    internalPort: 3724
+    externalPort: 32767   # unused at type=ClusterIP
+
+gateway:
+  replicaCount: 2
+  hostname: "10.10.30.73"   # advertised to clients in realmlist redirect
+  port: 32766
+  service:
+    type: ClusterIP
+
+gameserver_ac:
+  replicaCount: 2
+  storageClass: longhorn-static   # RWX-capable
+  port_world: 9601
+  port_health: 9604
+  port_soap: 7878
+  port_telnet: 3443
+  initcontainer:
+    download_enabled: true
+    download_url: "https://github.com/wowgaming/client-data/releases/download/v16/data.zip"
+    image:
+      repository: alpine
+      pullPolicy: IfNotPresent
+      tag: "latest"
+  service:
+    type: ClusterIP
+    internalPort: 9509
+    externalPort: 9509

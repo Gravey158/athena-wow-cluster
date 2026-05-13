@@ -36,6 +36,11 @@ databases:
   # Don't forget to disable mysql with mysql.enabled=false.
   external_db_hostname: ""
   external_db_port: "3306"
+  # athena-wow-cluster hardfork addition: when true, skip generation of
+  # '{Release.Name}-databases-config' Secret and 'mysql-init-scripts' CM;
+  # consumer must provide the Secret out-of-band (e.g. SealedSecret).
+  # See docs/adr/003-chart-modification-external-secret.md.
+  externalSecret: false
 
 servers_registry:
   replicaCount: 1
