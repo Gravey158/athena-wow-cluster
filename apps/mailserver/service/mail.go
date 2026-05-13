@@ -193,7 +193,13 @@ func (s *MailService) ProcessExpiredMails(ctx context.Context, realmID uint32) e
 
 		mail.FlagsMask |= uint16(repo.MailFlagReturned)
 		mail.ReceiverGuid = mail.SenderGuid
-		mail.ExpirationTimestamp = time.Now().Add(time.Second * time.Duration(mail.ExpirationTimestamp-mail.DeliveryTimestamp)).Unix()
+		// B70: the diff `Expiration - Delivery` is already in seconds (both
+		// are Unix timestamps). Wrapping with `time.Duration(int64)` treats
+		// the value as NANOSECONDS, so e.g. a 30-day expiration shrinks to
+		// 2.5ms -- the returned mail expires on the very next cleanup tick
+		// and the user never sees it. Multiply by time.Second to get the
+		// intended duration.
+		mail.ExpirationTimestamp = time.Now().Add(time.Duration(mail.ExpirationTimestamp-mail.DeliveryTimestamp) * time.Second).Unix()
 		err = s.repo.UpdateMailWithoutAttachments(ctx, realmID, &mail)
 		if err != nil {
 			return err
