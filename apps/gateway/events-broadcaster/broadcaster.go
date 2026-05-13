@@ -4,6 +4,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/walkline/ToCloud9/apps/gateway"
 	"github.com/walkline/ToCloud9/shared/events"
 	"github.com/walkline/ToCloud9/shared/wow/guid"
@@ -179,6 +181,21 @@ func NewBroadcaster(chatChannelsService *ChatChannelsService) Broadcaster {
 	}
 }
 
+// sendOrDrop non-blocking send to a registered character's eventsChan.
+// B68: previously every broadcaster method did `ch <- Event{...}` as a
+// blocking send. If a single session's consumer wedged (slow gameSocket,
+// goroutine stuck) the channel buffer (100) would fill and the broadcaster
+// would block -- stalling event delivery for every other player on the
+// gateway. Drop on full instead and log; the affected session loses one
+// event, the rest of the gateway keeps moving.
+func (b *broadcasterImpl) sendOrDrop(ch chan Event, ev Event) {
+	select {
+	case ch <- ev:
+	default:
+		log.Warn().Int("type", int(ev.Type)).Msg("broadcaster: events channel full, dropping event")
+	}
+}
+
 func (b *broadcasterImpl) RegisterCharacter(charGUID uint64) <-chan Event {
 	const eventsChanBufferSize = 100
 
@@ -206,10 +223,10 @@ func (b *broadcasterImpl) NewIncomingWhisperEvent(payload *IncomingWhisperPayloa
 		return
 	}
 
-	ch <- Event{
+	b.sendOrDrop(ch, Event{
 		Type:    EventTypeIncomingWhisper,
 		Payload: payload,
-	}
+	})
 }
 
 func (b *broadcasterImpl) NewIncomingMailEvent(payload *events.MailEventIncomingMailPayload) {
@@ -221,10 +238,10 @@ func (b *broadcasterImpl) NewIncomingMailEvent(payload *events.MailEventIncoming
 		return
 	}
 
-	ch <- Event{
+	b.sendOrDrop(ch, Event{
 		Type:    EventTypeIncomingMail,
 		Payload: payload,
-	}
+	})
 }
 
 func (b *broadcasterImpl) NewGuildInviteCreatedEvent(payload *GuildInviteCreatedPayload) {
@@ -236,99 +253,99 @@ func (b *broadcasterImpl) NewGuildInviteCreatedEvent(payload *GuildInviteCreated
 		return
 	}
 
-	ch <- Event{
+	b.sendOrDrop(ch, Event{
 		Type:    EventTypeGuildInviteCreated,
 		Payload: payload,
-	}
+	})
 }
 
 func (b *broadcasterImpl) NewGuildMemberPromoteEvent(payload *events.GuildEventMemberPromotePayload) {
 	for _, ch := range b.channelsForGUIDs(payload.MembersOnline) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGuildMemberPromoted,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGuildMemberDemoteEvent(payload *events.GuildEventMemberDemotePayload) {
 	for _, ch := range b.channelsForGUIDs(payload.MembersOnline) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGuildMemberDemoted,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGuildMemberAddedEvent(payload *events.GuildEventMemberAddedPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.MembersOnline) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGuildMemberAdded,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGuildMemberLeftEvent(payload *events.GuildEventMemberLeftPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.MembersOnline) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGuildMemberLeft,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGuildMemberKickedEvent(payload *events.GuildEventMemberKickedPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.MembersOnline) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGuildMemberKicked,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGuildMOTDUpdatedEvent(payload *events.GuildEventMOTDUpdatedPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.MembersOnline) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGuildMOTDUpdated,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGuildRankUpdatedEvent(payload *events.GuildEventRankUpdatedPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.MembersOnline) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGuildRankUpdated,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGuildRankCreatedEvent(payload *events.GuildEventRankCreatedPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.MembersOnline) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGuildRankCreated,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGuildRankDeletedEvent(payload *events.GuildEventRankDeletedPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.MembersOnline) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGuildRankDeleted,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGuildMessageEvent(payload *events.GuildEventNewMessagePayload) {
 	for _, ch := range b.channelsForGUIDs(payload.Receivers) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGuildNewMessage,
 			Payload: payload,
-		}
+		})
 	}
 }
 
@@ -341,10 +358,10 @@ func (b *broadcasterImpl) NewGroupInviteCreatedEvent(payload *events.GroupEventI
 		return
 	}
 
-	ch <- Event{
+	b.sendOrDrop(ch, Event{
 		Type:    EventTypeGroupInviteCreated,
 		Payload: payload,
-	}
+	})
 }
 
 func (b *broadcasterImpl) NewGroupCreatedEvent(payload *events.GroupEventGroupCreatedPayload) {
@@ -353,100 +370,100 @@ func (b *broadcasterImpl) NewGroupCreatedEvent(payload *events.GroupEventGroupCr
 		membersGuids[i] = payload.Members[i].MemberGUID
 	}
 	for _, ch := range b.channelsForGUIDs(membersGuids) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGroupCreated,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGroupMemberOnlineStatusChangedEvent(payload *events.GroupEventGroupMemberOnlineStatusChangedPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.OnlineMembers) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGroupMemberOnlineStatusChanged,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGroupMemberLeftEvent(payload *events.GroupEventGroupMemberLeftPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.OnlineMembers) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGroupMemberLeft,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGroupDisbandEvent(payload *events.GroupEventGroupDisbandPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.OnlineMembers) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGroupDisband,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGroupMemberAddedEvent(payload *events.GroupEventGroupMemberAddedPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.OnlineMembers) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGroupMemberAdded,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGroupLeaderChangedEvent(payload *events.GroupEventGroupLeaderChangedPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.OnlineMembers) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGroupLeaderChanged,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGroupLootTypeChangedEvent(payload *events.GroupEventGroupLootTypeChangedPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.OnlineMembers) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGroupLootTypeChanged,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGroupConvertedToRaidEvent(payload *events.GroupEventGroupConvertedToRaidPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.OnlineMembers) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGroupConvertedToRaid,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGroupMessageEvent(payload *events.GroupEventNewMessagePayload) {
 	for _, ch := range b.channelsForGUIDs(payload.Receivers) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGroupNewMessage,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGroupTargetIconEvent(payload *events.GroupEventNewTargetIconPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.Receivers) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGroupNewTargetIcon,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewGroupDifficultyChangedEvent(payload *events.GroupEventGroupDifficultyChangedPayload) {
 	for _, ch := range b.channelsForGUIDs(payload.Receivers) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeGroupDifficultyChanged,
 			Payload: payload,
-		}
+		})
 	}
 }
 
@@ -456,10 +473,10 @@ func (b *broadcasterImpl) NewMatchmakingJoinedPVPQueueEvent(payload *events.Matc
 	}
 
 	for _, ch := range b.channelsForGUIDs(convertLowGUIDsToUint64(payload.PlayersGUID)) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeMMJoinedPVPQueue,
 			Payload: payload,
-		}
+		})
 	}
 }
 
@@ -469,10 +486,10 @@ func (b *broadcasterImpl) NewMatchmakingInvitedToBGOrArenaEvent(payload *events.
 	}
 
 	for _, ch := range b.channelsForGUIDs(convertLowGUIDsToUint64(payload.PlayersGUID)) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeMMInvitedToBGOrArena,
 			Payload: payload,
-		}
+		})
 	}
 }
 
@@ -482,19 +499,19 @@ func (b *broadcasterImpl) NewMatchmakingInviteToBGOrArenaExpiredEvent(payload *e
 	}
 
 	for _, ch := range b.channelsForGUIDs(convertLowGUIDsToUint64(payload.PlayersGUID)) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeMMInviteToBGOrArenaExpired,
 			Payload: payload,
-		}
+		})
 	}
 }
 
 func (b *broadcasterImpl) NewFriendStatusChangeEvent(payload *events.FriendEventStatusChangePayload) {
 	for _, ch := range b.channelsForGUIDs(payload.NotifyPlayers) {
-		ch <- Event{
+		b.sendOrDrop(ch, Event{
 			Type:    EventTypeFriendStatusChange,
 			Payload: payload,
-		}
+		})
 	}
 }
 
@@ -507,10 +524,10 @@ func (b *broadcasterImpl) NewFriendAddedEvent(payload *events.FriendEventAddedPa
 		return
 	}
 
-	ch <- Event{
+	b.sendOrDrop(ch, Event{
 		Type:    EventTypeFriendAdded,
 		Payload: payload,
-	}
+	})
 }
 
 func (b *broadcasterImpl) NewFriendRemovedEvent(payload *events.FriendEventRemovedPayload) {
@@ -522,10 +539,10 @@ func (b *broadcasterImpl) NewFriendRemovedEvent(payload *events.FriendEventRemov
 		return
 	}
 
-	ch <- Event{
+	b.sendOrDrop(ch, Event{
 		Type:    EventTypeFriendRemoved,
 		Payload: payload,
-	}
+	})
 }
 
 func (b *broadcasterImpl) NewFriendNoteUpdateEvent(payload *events.FriendEventNoteUpdatePayload) {
@@ -537,10 +554,10 @@ func (b *broadcasterImpl) NewFriendNoteUpdateEvent(payload *events.FriendEventNo
 		return
 	}
 
-	ch <- Event{
+	b.sendOrDrop(ch, Event{
 		Type:    EventTypeFriendNoteUpdate,
 		Payload: payload,
-	}
+	})
 }
 
 func (b *broadcasterImpl) NewChannelMessageEvent(payload *ChannelMessagePayload) {
@@ -572,10 +589,10 @@ func (b *broadcasterImpl) NewChannelNotificationEvent(payload *ChannelNotificati
 		b.channelsMu.RUnlock()
 
 		if ok {
-			ch <- Event{
+			b.sendOrDrop(ch, Event{
 				Type:    EventTypeChannelNotification,
 				Payload: payload,
-			}
+			})
 		}
 		return
 	}
