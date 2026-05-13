@@ -72,7 +72,7 @@ func (c *CharactersListener) Listen() error {
 		}
 
 		// Transfer ownership if player was owner (but keep them as member)
-		transfers := c.channelMgr.TransferOwnershipOnLogout(loggedOutP.RealmID, loggedOutP.CharGUID)
+		transfers := c.channelMgr.TransferOwnershipOnLogout(c.ctx, loggedOutP.RealmID, loggedOutP.CharGUID)
 
 		// Broadcast ownership changes for each transfer
 		for _, transfer := range transfers {

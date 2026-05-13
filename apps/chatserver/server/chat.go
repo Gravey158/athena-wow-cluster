@@ -14,14 +14,20 @@ import (
 
 type ChatService struct {
 	pb.UnimplementedChatServiceServer
+	// ctx is the process-lifetime context. Used by fire-and-forget
+	// background goroutines (UpdateLastUsed in SendChannelMessage)
+	// so they get cancelled on SIGTERM instead of riding past the
+	// container kill window. (B65)
+	ctx         context.Context
 	charRepo    repo.CharactersRepo
 	channelMgr  *service.ChannelManager
 	msgProducer sender.MsgProducer
 	serviceID   string
 }
 
-func NewChatService(charRepo repo.CharactersRepo, channelMgr *service.ChannelManager, msgProducer sender.MsgProducer, serviceID string) *ChatService {
+func NewChatService(ctx context.Context, charRepo repo.CharactersRepo, channelMgr *service.ChannelManager, msgProducer sender.MsgProducer, serviceID string) *ChatService {
 	return &ChatService{
+		ctx:         ctx,
 		charRepo:    charRepo,
 		channelMgr:  channelMgr,
 		msgProducer: msgProducer,

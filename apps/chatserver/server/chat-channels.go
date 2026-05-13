@@ -123,9 +123,10 @@ func (s *ChatService) SendChannelMessage(ctx context.Context, req *pb.SendChanne
 		return nil, err
 	}
 
-	// Update last used timestamp (fire and forget)
+	// Update last used timestamp (fire and forget; B65: uses process ctx
+	// so SIGTERM cancels the goroutine instead of letting it linger).
 	go func() {
-		if err := s.channelMgr.UpdateLastUsed(context.Background(), req.RealmID, req.ChannelName, req.TeamID); err != nil {
+		if err := s.channelMgr.UpdateLastUsed(s.ctx, req.RealmID, req.ChannelName, req.TeamID); err != nil {
 			log.Error().Err(err).Msg("Failed to update channel last used timestamp")
 		}
 	}()

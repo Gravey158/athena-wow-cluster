@@ -942,9 +942,10 @@ type OwnershipTransfer struct {
 }
 
 // TransferOwnershipOnLogout transfers channel ownership when owner logs out (but keeps them as member)
-// Returns list of ownership transfers that occurred
-func (cm *ChannelManager) TransferOwnershipOnLogout(realmID uint32, playerGUID uint64) []OwnershipTransfer {
-	ctx := context.Background() // Background context for logout operations
+// Returns list of ownership transfers that occurred.
+// B66: caller now supplies ctx (process-lifetime) so SIGTERM can cancel the
+// per-channel UpdateMemberFlags writes; previously hardcoded Background().
+func (cm *ChannelManager) TransferOwnershipOnLogout(ctx context.Context, realmID uint32, playerGUID uint64) []OwnershipTransfer {
 	var transfers []OwnershipTransfer
 
 	// First pass: collect channels to process (read lock only)
