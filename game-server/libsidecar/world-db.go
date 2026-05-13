@@ -9,6 +9,8 @@ import "C"
 import (
 	"context"
 	"io"
+	"os"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -20,34 +22,56 @@ import (
 	"github.com/walkline/ToCloud9/gen/worlddb/pb"
 )
 
-// worldDBClient is set up once during initLib via SetupWorldDBConnection.
-// nil means the worlddbserver feature is disabled -- TC9LoadAllCreatureTemplates
-// returns -1 and the AC side falls back to MySQL.
-var worldDBClient pb.WorldDBServiceClient
+// worldDBClient is the lazily-initialized gRPC client. The connection is
+// established on the first TC9LoadAllCreatureTemplates call rather than at
+// TC9InitLib time, because AC's ObjectMgr::LoadCreatureTemplates runs BEFORE
+// TC9InitLib in the worldserver boot sequence. The mu protects the lazy
+// dial; once set, the client is read concurrently.
+var (
+	worldDBMu     sync.Mutex
+	worldDBClient pb.WorldDBServiceClient
+	worldDBConn   *grpc.ClientConn
+)
 
-// SetupWorldDBConnection dials the worlddbserver microservice if its
-// address is configured. Empty config means "disabled" (default) -- we
-// only enable the gRPC path when WORLD_DB_SERVICE_ADDRESS is explicitly
-// set in the environment. This makes the rollout opt-in per gameserver
-// pod and lets us A/B test the path during ADR-007 Phase 2.
-//
-// Returns the connection so the caller can close it on shutdown. Returns
-// nil if the feature is disabled.
-func SetupWorldDBConnection(cfg *config.Config) *grpc.ClientConn {
-	if cfg.WorldDBServiceAddress == "" {
-		log.Info().Msg("worlddbserver disabled (WORLD_DB_SERVICE_ADDRESS not set); ObjectMgr will load from MySQL")
+// ensureWorldDBClient lazy-dials the worlddbserver on first use. Address
+// comes from WORLD_DB_SERVICE_ADDRESS env var. Returns nil client when
+// the address is unset -- caller treats that as "feature disabled, fall
+// back to MySQL".
+func ensureWorldDBClient(ctx context.Context) pb.WorldDBServiceClient {
+	worldDBMu.Lock()
+	defer worldDBMu.Unlock()
+	if worldDBClient != nil {
+		return worldDBClient
+	}
+	addr := os.Getenv("WORLD_DB_SERVICE_ADDRESS")
+	if addr == "" {
 		return nil
 	}
-
-	conn, err := grpc.Dial(cfg.WorldDBServiceAddress,
+	dialCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, err := grpc.DialContext(dialCtx, addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
 	)
 	if err != nil {
-		log.Fatal().Err(err).Str("address", cfg.WorldDBServiceAddress).Msg("can't connect to worlddbserver")
+		log.Err(err).Str("address", addr).Msg("worlddbserver dial failed (lazy)")
+		return nil
 	}
+	worldDBConn = conn
 	worldDBClient = pb.NewWorldDBServiceClient(conn)
-	log.Info().Str("address", cfg.WorldDBServiceAddress).Msg("worlddbserver connection established")
-	return conn
+	log.Info().Str("address", addr).Msg("worlddbserver connection established (lazy)")
+	return worldDBClient
+}
+
+// SetupWorldDBConnection is kept for the TC9InitLib startup path's shutdown
+// hook but no longer dials -- the dial is lazy (see ensureWorldDBClient)
+// because ObjectMgr::LoadCreatureTemplates runs BEFORE TC9InitLib.
+// Returns nil; the caller's shutdown hook checks worldDBConn directly.
+func SetupWorldDBConnection(cfg *config.Config) *grpc.ClientConn {
+	if cfg.WorldDBServiceAddress != "" {
+		log.Info().Str("address", cfg.WorldDBServiceAddress).Msg("worlddbserver lazy-dial configured")
+	}
+	return nil
 }
 
 // TC9LoadAllCreatureTemplates streams every row from the worlddbserver and
@@ -65,14 +89,16 @@ func SetupWorldDBConnection(cfg *config.Config) *grpc.ClientConn {
 //
 //export TC9LoadAllCreatureTemplates
 func TC9LoadAllCreatureTemplates() C.int {
-	if worldDBClient == nil {
-		return -1
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	stream, err := worldDBClient.GetAllCreatureTemplates(ctx, &pb.GetAllCreatureTemplatesRequest{Api: libVer})
+	client := ensureWorldDBClient(ctx)
+	if client == nil {
+		log.Info().Msg("worlddbserver disabled (no WORLD_DB_SERVICE_ADDRESS); AC will use MySQL")
+		return -1
+	}
+
+	stream, err := client.GetAllCreatureTemplates(ctx, &pb.GetAllCreatureTemplatesRequest{Api: libVer})
 	if err != nil {
 		log.Err(err).Msg("GetAllCreatureTemplates RPC failed; AC will fall back to MySQL")
 		return -1

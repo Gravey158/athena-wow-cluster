@@ -65,9 +65,12 @@ func initLib(realmID uint32) (*config.Config, healthandmetrics.Server, ShutdownF
 
 	SetupMatchmakingConnection(ctx, cfg)
 
-	// worldDBConn is nil when WORLD_DB_SERVICE_ADDRESS is unset (ADR-007
-	// Phase 2: opt-in per pod). Shutdown is safe to call on nil.
-	worldDBConn := SetupWorldDBConnection(cfg)
+	// worlddb gRPC connection is lazy-dialed by ensureWorldDBClient on the
+	// first TC9LoadAllCreatureTemplates call (ADR-007 Phase 2.1). The
+	// "SetupWorldDBConnection" call here just logs the configured address
+	// for visibility -- the real dial happens later because AC's
+	// ObjectMgr::LoadCreatureTemplates runs BEFORE TC9InitLib.
+	SetupWorldDBConnection(cfg)
 
 	grpcListener, grpcServer := SetupGRPCService(cfg)
 	go func() {
@@ -107,11 +110,16 @@ func initLib(realmID uint32) (*config.Config, healthandmetrics.Server, ShutdownF
 			log.Fatal().Err(err).Msg("failed to close guid service connection")
 		}
 
+		// worldDBConn is the package-level connection set by the lazy dial
+		// in ensureWorldDBClient. May still be nil if AC never called
+		// TC9LoadAllCreatureTemplates or if the feature is disabled.
+		worldDBMu.Lock()
 		if worldDBConn != nil {
 			if err = worldDBConn.Close(); err != nil {
 				log.Err(err).Msg("failed to close worlddb connection")
 			}
 		}
+		worldDBMu.Unlock()
 
 		log.Info().Msg("👍 Sidecar successfully stopped.")
 	}

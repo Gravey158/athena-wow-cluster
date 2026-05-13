@@ -1,0 +1,271 @@
+--- a/src/server/game/Globals/ObjectMgr.h
++++ b/src/server/game/Globals/ObjectMgr.h
+@@ -722,6 +722,9 @@
+ typedef std::unordered_map<uint32, QuestMoneyRewardArray> QuestMoneyRewardStore;
+ 
+ class PlayerDumpReader;
++
++// ADR-007 Phase 2.1: row struct comes from libsidecar world-db.h
++struct CreatureTemplateRow;
+ 
+ class ObjectMgr
+ {
+@@ -1029,6 +1032,9 @@
+     void LoadCreatureLocales();
+     void LoadCreatureTemplates();
+     void LoadCreatureTemplate(Field* fields, bool triggerHook = false);
++    // ADR-007 Phase 2.1: populate one entry from a worlddbserver-streamed row.
++    // Public so the C-style libsidecar callback can dispatch through sObjectMgr.
++    void LoadCreatureTemplateFromTC9Row(CreatureTemplateRow const* row);
+     void LoadCreatureTemplateModels();
+     void LoadCreatureTemplateAddons();
+     void LoadCreatureTemplateResistances();
+--- a/src/server/game/Globals/ObjectMgr.cpp
++++ b/src/server/game/Globals/ObjectMgr.cpp
+@@ -16,6 +16,9 @@
+  */
+ 
+ #include "ObjectMgr.h"
++extern "C" {
++#include "world-db.h"  // ADR-007 Phase 2.1: CreatureTemplateRow + TC9 hooks
++}
+ #include "AchievementMgr.h"
+ #include "ArenaTeamMgr.h"
+ #include "CharacterCache.h"
+@@ -517,14 +520,197 @@
+     } while (result->NextRow());
+ 
+     LOG_INFO("server.loading", ">> Loaded {} Points Of Interest Locale Strings in {} ms", (uint32)_pointOfInterestLocaleStore.size(), GetMSTimeDiffToNow(oldMSTime));
++}
++
++namespace
++{
++    // ADR-007 Phase 2.1 helpers.
++    struct TC9MovementJoin
++    {
++        uint32 ground;
++        uint32 flight;
++        uint32 chase;
++        uint32 random;
++        uint32 interaction_pause;
++        bool swim;
++        bool rooted;
++        bool ground_null;
++        bool flight_null;
++        bool chase_null;
++        bool random_null;
++        bool interaction_pause_null;
++    };
++
++    static std::unordered_map<uint32, TC9MovementJoin> g_tc9MovementJoins;
++
++    static int TC9CreatureTemplateRowHandler(CreatureTemplateRow const* row)
++    {
++        sObjectMgr->LoadCreatureTemplateFromTC9Row(row);
++        return 0;
++    }
++
++    // Returns the row count on success, or -1 to fall back to MySQL.
++    // Pre-loads creature_template_movement JOIN data via MySQL (that table
++    // isn't behind worlddbserver yet) then streams creature_template via
++    // gRPC. The Go-side ensureWorldDBClient is the feature gate -- it
++    // returns nil if WORLD_DB_SERVICE_ADDRESS is unset.
++    int LoadCreatureTemplatesViaTC9()
++    {
++        g_tc9MovementJoins.clear();
++        QueryResult mres = WorldDatabase.Query(
++            "SELECT CreatureId, Ground, Swim, Flight, Rooted, Chase, Random, InteractionPauseTimer "
++            "FROM creature_template_movement");
++        if (mres)
++        {
++            do
++            {
++                Field* f = mres->Fetch();
++                uint32 cid = f[0].Get<uint32>();
++                TC9MovementJoin m;
++                m.ground_null = f[1].IsNull();
++                m.ground = m.ground_null ? 0 : uint32(f[1].Get<uint8>());
++                m.swim = f[2].Get<bool>();
++                m.flight_null = f[3].IsNull();
++                m.flight = m.flight_null ? 0 : uint32(f[3].Get<uint8>());
++                m.rooted = f[4].Get<bool>();
++                m.chase_null = f[5].IsNull();
++                m.chase = m.chase_null ? 0 : uint32(f[5].Get<uint8>());
++                m.random_null = f[6].IsNull();
++                m.random = m.random_null ? 0 : uint32(f[6].Get<uint8>());
++                m.interaction_pause_null = f[7].IsNull();
++                m.interaction_pause = m.interaction_pause_null ? 0 : f[7].Get<uint32>();
++                g_tc9MovementJoins[cid] = m;
++            } while (mres->NextRow());
++        }
++
++        TC9SetCreatureTemplateRowHandler(&TC9CreatureTemplateRowHandler);
++        int rc = TC9LoadAllCreatureTemplates();
++        TC9SetCreatureTemplateRowHandler(nullptr);
++        g_tc9MovementJoins.clear();
++
++        if (rc < 0)
++        {
++            LOG_INFO("server.loading", "TC9 creature_template load not available (rc={}); using MySQL", rc);
++            return -1;
++        }
++        return rc;
++    }
++}
++
++void ObjectMgr::LoadCreatureTemplateFromTC9Row(CreatureTemplateRow const* row)
++{
++    uint32 entry = row->entry;
++    CreatureTemplate& creatureTemplate = _creatureTemplateStore[entry];
++
++    if (_creatureTemplateStoreFast.size() < entry + 1)
++    {
++        _creatureTemplateStoreFast.resize(entry + 1, nullptr);
++    }
++    _creatureTemplateStoreFast[entry] = &creatureTemplate;
++
++    creatureTemplate.Entry = entry;
++    creatureTemplate.DifficultyEntry[0] = row->difficulty_entry_1;
++    creatureTemplate.DifficultyEntry[1] = row->difficulty_entry_2;
++    creatureTemplate.DifficultyEntry[2] = row->difficulty_entry_3;
++    creatureTemplate.KillCredit[0]      = row->kill_credit_1;
++    creatureTemplate.KillCredit[1]      = row->kill_credit_2;
++    creatureTemplate.Name               = row->name;
++    creatureTemplate.SubName            = row->sub_name;
++    creatureTemplate.IconName           = row->icon_name;
++    creatureTemplate.GossipMenuId       = row->gossip_menu_id;
++    creatureTemplate.minlevel           = uint8(row->min_level);
++    creatureTemplate.maxlevel           = uint8(row->max_level);
++    creatureTemplate.expansion          = uint32(row->exp);
++    creatureTemplate.faction            = row->faction;
++    creatureTemplate.npcflag            = row->npc_flag;
++    creatureTemplate.speed_walk         = row->speed_walk;
++    creatureTemplate.speed_run          = row->speed_run;
++    creatureTemplate.speed_swim         = row->speed_swim;
++    creatureTemplate.speed_flight       = row->speed_flight;
++    creatureTemplate.detection_range    = row->detection_range;
++    creatureTemplate.rank               = row->rank;
++    creatureTemplate.dmgschool          = uint32(row->dmg_school);
++    creatureTemplate.DamageModifier     = row->damage_modifier;
++    creatureTemplate.BaseAttackTime     = row->base_attack_time;
++    creatureTemplate.RangeAttackTime    = row->range_attack_time;
++    creatureTemplate.BaseVariance       = row->base_variance;
++    creatureTemplate.RangeVariance      = row->range_variance;
++    creatureTemplate.unit_class         = row->unit_class;
++    creatureTemplate.unit_flags         = row->unit_flags;
++    creatureTemplate.unit_flags2        = row->unit_flags_2;
++    creatureTemplate.dynamicflags       = row->dynamic_flags;
++    creatureTemplate.family             = uint32(row->family);
++    creatureTemplate.type               = row->type;
++    creatureTemplate.type_flags         = row->type_flags;
++    creatureTemplate.lootid             = row->lootid;
++    creatureTemplate.pickpocketLootId   = row->pickpocket_loot;
++    creatureTemplate.SkinLootId         = row->skinning_loot;
++
++    for (uint8 i = SPELL_SCHOOL_HOLY; i < MAX_SPELL_SCHOOL; ++i)
++        creatureTemplate.resistance[i] = 0;
++    for (uint8 i = 0; i < MAX_CREATURE_SPELLS; ++i)
++        creatureTemplate.spells[i] = 0;
++
++    creatureTemplate.PetSpellDataId = row->pet_spell_data_id;
++    creatureTemplate.VehicleId      = row->vehicle_id;
++    creatureTemplate.mingold        = row->min_gold;
++    creatureTemplate.maxgold        = row->max_gold;
++    creatureTemplate.AIName         = row->ai_name;
++    creatureTemplate.MovementType   = row->movement_type;
++
++    auto mit = g_tc9MovementJoins.find(entry);
++    if (mit != g_tc9MovementJoins.end())
++    {
++        if (!mit->second.ground_null)
++            creatureTemplate.Movement.Ground = static_cast<CreatureGroundMovementType>(mit->second.ground);
++        creatureTemplate.Movement.Swim = mit->second.swim;
++        if (!mit->second.flight_null)
++            creatureTemplate.Movement.Flight = static_cast<CreatureFlightMovementType>(mit->second.flight);
++        creatureTemplate.Movement.Rooted = mit->second.rooted;
++        if (!mit->second.chase_null)
++            creatureTemplate.Movement.Chase = static_cast<CreatureChaseMovementType>(mit->second.chase);
++        if (!mit->second.random_null)
++            creatureTemplate.Movement.Random = static_cast<CreatureRandomMovementType>(mit->second.random);
++        if (!mit->second.interaction_pause_null)
++            creatureTemplate.Movement.InteractionPauseTimer = mit->second.interaction_pause;
++    }
++
++    creatureTemplate.HoverHeight           = row->hover_height;
++    creatureTemplate.ModHealth             = row->health_modifier;
++    creatureTemplate.ModMana               = row->mana_modifier;
++    creatureTemplate.ModArmor              = row->armor_modifier;
++    creatureTemplate.ModExperience         = row->experience_modifier;
++    creatureTemplate.RacialLeader          = row->racial_leader != 0;
++    creatureTemplate.movementId            = row->movement_id;
++    creatureTemplate.RegenHealth           = row->regen_health != 0;
++    creatureTemplate.CreatureImmunitiesId  = row->creature_immunities_id;
++    creatureTemplate.flags_extra           = row->flags_extra;
++    creatureTemplate.ScriptID              = GetScriptId(row->script_name);
+ }
+ 
+ void ObjectMgr::LoadCreatureTemplates()
+ {
+     uint32 oldMSTime = getMSTime();
++    uint32 count = 0;
++    bool fromTC9 = false;
+ 
+-//                                                        0      1                   2                   3                   4            5            6     7        8
+-    QueryResult result = WorldDatabase.Query("SELECT entry, difficulty_entry_1, difficulty_entry_2, difficulty_entry_3, KillCredit1, KillCredit2, name, subname, IconName, "
++    // ADR-007 Phase 2.1: try worlddbserver first. Returns row count >=0 on
++    // success or -1 to fall through to MySQL. Lazy-dials the gRPC client
++    // on first call -- works correctly because Go-side runs in-process.
++    {
++        int rc = LoadCreatureTemplatesViaTC9();
++        if (rc >= 0)
++        {
++            count = uint32(rc);
++            fromTC9 = true;
++            LOG_INFO("server.loading", ">> Loaded {} Creature Definitions via worlddbserver in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
++        }
++    }
++
++    QueryResult result;
++    if (!fromTC9)
++    {
++        result = WorldDatabase.Query("SELECT entry, difficulty_entry_1, difficulty_entry_2, difficulty_entry_3, KillCredit1, KillCredit2, name, subname, IconName, "
+ //                        9               10        11        12   13       14       15          16         17          18            19               20      21
+                          "gossip_menu_id, minlevel, maxlevel, exp, faction, npcflag, speed_walk, speed_run, speed_swim, speed_flight, detection_range, `rank`, dmgschool, "
+ //                        22              23              24               25            26             27          28          29           30            31
+@@ -539,22 +725,22 @@
+                          "CreatureImmunitiesId, flags_extra, ScriptName "
+                          "FROM creature_template ct LEFT JOIN creature_template_movement ctm ON ct.entry = ctm.CreatureId ORDER BY entry DESC;");
+ 
+-    if (!result)
+-    {
+-        LOG_WARN("server.loading", ">> Loaded 0 creature template definitions. DB table `creature_template` is empty.");
+-        return;
+-    }
++        if (!result)
++        {
++            LOG_WARN("server.loading", ">> Loaded 0 creature template definitions. DB table `creature_template` is empty.");
++            return;
++        }
+ 
+-    _creatureTemplateStore.rehash(result->GetRowCount());
+-    _creatureTemplateStoreFast.clear();
++        _creatureTemplateStore.rehash(result->GetRowCount());
++        _creatureTemplateStoreFast.clear();
+ 
+-    uint32 count = 0;
+-    do
+-    {
+-        Field* fields = result->Fetch();
+-        LoadCreatureTemplate(fields);
+-        ++count;
+-    } while (result->NextRow());
++        do
++        {
++            Field* fields = result->Fetch();
++            LoadCreatureTemplate(fields);
++            ++count;
++        } while (result->NextRow());
++    }
+ 
+     // We load the creature models after loading but before checking
+     LoadCreatureTemplateModels();

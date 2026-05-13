@@ -375,6 +375,10 @@ services:
       GUID_PROVIDER_SERVICE_ADDRESS: guidserver:8996
       SERVERS_REGISTRY_SERVICE_ADDRESS: servers-registry:8999
       MATCHMAKING_SERVICE_ADDRESS: matchmakingserver:8994
+      # ADR-007 Phase 2.1: opt this gameserver into the worlddbserver gRPC
+      # path for creature_template. ac-1 stays on MySQL as safety-net so a
+      # regression here doesn't take both pods down.
+      WORLD_DB_SERVICE_ADDRESS: worlddbserver:8993
     profiles:
       - ac
 
