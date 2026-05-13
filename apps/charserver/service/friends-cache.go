@@ -21,7 +21,10 @@ type OnlinePlayersCache interface {
 }
 
 type onlinePlayersCacheImpl struct {
-	// cacheMutex guards onlineInfoByGUID map
+	// cacheMutex guards onlineInfoByGUID map AND friendsService.
+	// friendsService is set once at startup but the NATS subscriber
+	// could (in principle) fire HandleCharacterLoggedIn before main()
+	// gets to SetFriendsService, so the access is synchronized. (B57)
 	cacheMutex sync.RWMutex
 
 	// onlineInfoByGUID maps player GUID to their online info
@@ -38,7 +41,15 @@ func NewOnlinePlayersCache() OnlinePlayersCache {
 }
 
 func (o *onlinePlayersCacheImpl) SetFriendsService(friendsService FriendsService) {
+	o.cacheMutex.Lock()
 	o.friendsService = friendsService
+	o.cacheMutex.Unlock()
+}
+
+func (o *onlinePlayersCacheImpl) getFriendsService() FriendsService {
+	o.cacheMutex.RLock()
+	defer o.cacheMutex.RUnlock()
+	return o.friendsService
 }
 
 func (o *onlinePlayersCacheImpl) PlayerLoggedIn(playerGUID uint64, level, class, area uint32) {
@@ -77,10 +88,10 @@ func (o *onlinePlayersCacheImpl) HandleCharacterLoggedIn(payload events.GWEventC
 	o.PlayerLoggedIn(payload.CharGUID, uint32(payload.CharLevel), uint32(payload.CharClass), payload.CharZone)
 
 	// Notify friends service about login
-	if o.friendsService != nil {
+	if fs := o.getFriendsService(); fs != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return o.friendsService.NotifyStatusChange(
+		return fs.NotifyStatusChange(
 			ctx,
 			payload.RealmID,
 			payload.CharGUID,
@@ -99,10 +110,10 @@ func (o *onlinePlayersCacheImpl) HandleCharacterLoggedOut(payload events.GWEvent
 	o.PlayerLoggedOut(payload.CharGUID)
 
 	// Notify friends service about logout
-	if o.friendsService != nil {
+	if fs := o.getFriendsService(); fs != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return o.friendsService.NotifyStatusChange(
+		return fs.NotifyStatusChange(
 			ctx,
 			payload.RealmID,
 			payload.CharGUID,

@@ -43,7 +43,11 @@ func (c *charactersOnlineInMem) Remove(ctx context.Context, realmID uint32, guid
 	}
 	c.m.Lock()
 	delete(c.guidStorage[realmID], guid)
-	delete(c.nameStorage[realmID], char.CharName)
+	// B55: nameStorage is keyed by strings.ToUpper(CharName) per Add (line 31)
+	// but this delete originally used the raw CharName -- the key never matched
+	// and the entry leaked + the stale Character pointer kept satisfying
+	// OneByRealmAndName forever.
+	delete(c.nameStorage[realmID], strings.ToUpper(char.CharName))
 	c.m.Unlock()
 	return nil
 }
@@ -161,7 +165,9 @@ func (c *charactersOnlineInMem) RemoveAllWithGatewayID(ctx context.Context, real
 	}
 
 	for _, guid := range charsToDelete {
-		delete(namesStorage, storage[guid].CharName)
+		// B55: same case-mismatch as Remove; UPPER the name to match the
+		// key Add stored.
+		delete(namesStorage, strings.ToUpper(storage[guid].CharName))
 		delete(storage, guid)
 	}
 	c.m.Unlock()

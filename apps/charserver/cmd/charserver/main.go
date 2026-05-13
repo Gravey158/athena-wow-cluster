@@ -2,7 +2,12 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"net"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -111,11 +116,31 @@ func main() {
 	grpcServer := grpc.NewServer()
 	pb.RegisterCharactersServiceServer(grpcServer, server.NewCharServer(charRepo, onlineCharsRepo, onlineCharsRepo, itemsTemplate, friendsService))
 
+	// B56: previously charserver had no SIGTERM handler -- the container
+	// runtime SIGKILL'd in-flight gRPC writes. Now gracefully stops the
+	// gRPC server, NATS subscribers (also B52-protected for partial-listen
+	// rollback) and closes the conn.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		sig := <-sigCh
+		fmt.Println("")
+		log.Info().Msgf("🧨 Got signal %v, attempting graceful shutdown...", sig)
+		grpcServer.GracefulStop()
+	}()
+
 	log.Info().Str("address", lis.Addr().String()).Msg("🚀 Characters Server Started!")
 
 	if err := grpcServer.Serve(lis); err != nil {
-		panic(err)
+		log.Fatal().Err(err).Msg("couldn't serve")
 	}
+
+	wg.Wait()
+
+	log.Info().Msg("👍 Server successfully stopped.")
 }
 
 func configureDBConn(db *sql.DB) {
