@@ -515,73 +515,108 @@ func (s *GameSession) processWorldPacketsInPlace(ctx context.Context, f func(*pa
 }
 
 func (s *GameSession) onWorldSocketClosed() {
+	if s.character == nil {
+		return
+	}
+	// Capture player state at goroutine start. Avoids racing against the main
+	// session goroutine which may mutate s.character (B14/B15 cleanup).
+	snap := *s.character
 
-	go func(charGUID uint64) {
-		s.SendSysMessage("Lost connection with world server...")
-		time.Sleep(time.Second * 2) // giving some time to recover
+	go func() {
+		// B14/B15: respect session lifecycle. context.TODO() previously meant
+		// reconnect attempts kept running after the gateway / session shut down.
+		if s.ctx.Err() != nil {
+			return
+		}
 
-		s.SendSysMessage("Trying to recover...")
-		time.Sleep(time.Second * 1) // giving some time to recover
+		s.SendSysMessage("Lost connection with world server... trying to recover.")
+
+		// B11: try-immediate then exponential backoff. Previous design slept
+		// 2+1 seconds before even the first attempt, then 5s flat between
+		// retries -> up to ~15s of dead-air UX on a transient worldserver
+		// blip. Now: 1st try immediately, 2nd after 1s, 3rd after 2s, cap 5s.
+		const maxRetries = 3
+		const maxBackoff = 5 * time.Second
+		backoff := time.Second
 
 		var err error
 		var char *pbChar.LogInCharacter
 		var socket sockets.Socket
-		for i := 0; i < 3; i++ {
-			char, socket, err = s.connectToGameServer(context.TODO(), charGUID, nil, func(_ sockets.Socket) {
-				_, err := s.charServiceClient.SavePlayerPosition(context.TODO(), &pbChar.SavePlayerPositionRequest{
+
+		for i := 0; i < maxRetries; i++ {
+			if i > 0 {
+				select {
+				case <-time.After(backoff):
+				case <-s.ctx.Done():
+					return
+				}
+				if backoff < maxBackoff {
+					backoff *= 2
+					if backoff > maxBackoff {
+						backoff = maxBackoff
+					}
+				}
+			}
+
+			char, socket, err = s.connectToGameServer(s.ctx, snap.GUID, nil, func(_ sockets.Socket) {
+				_, saveErr := s.charServiceClient.SavePlayerPosition(s.ctx, &pbChar.SavePlayerPositionRequest{
 					Api:      root.SupportedCharServiceVer,
 					RealmID:  root.RealmID,
-					CharGUID: s.character.GUID,
-					MapID:    s.character.Map,
-					X:        s.character.PositionX,
-					Y:        s.character.PositionY,
-					Z:        s.character.PositionZ,
-					O:        s.character.PositionO,
+					CharGUID: snap.GUID,
+					MapID:    snap.Map,
+					X:        snap.PositionX,
+					Y:        snap.PositionY,
+					Z:        snap.PositionZ,
+					O:        snap.PositionO,
 				})
-				if err != nil {
-					s.logger.Error().Err(err).Msg("can't save player position")
+				if saveErr != nil {
+					s.logger.Error().Err(saveErr).Msg("can't save player position")
 				}
 			})
-			if err != nil {
-				s.logger.Error().Err(err).Msg("failed to reconnect player to the world")
-			} else {
+			if err == nil {
 				break
 			}
-			time.Sleep(time.Second * 5) // giving some time to recover
+			if s.ctx.Err() != nil {
+				return
+			}
+			s.logger.Error().Err(err).Int("attempt", i+1).Int("max", maxRetries).Msg("reconnect attempt failed")
 		}
 
 		if err != nil {
-			s.SendSysMessage("Failed :( Returning to the characters screen.")
-
-			time.Sleep(time.Second * 2) // giving some time for player to read the message
-
+			s.SendSysMessage("Failed to recover. Returning to character screen.")
 			resp := packet.NewWriterWithSize(packet.SMsgCharacterLoginFailed, 1)
 			resp.Uint8(uint8(packet.LoginErrorCodeWorldServerIsDown))
 			s.gameSocket.Send(resp)
 			return
 		}
 
+		// Tell the client to load the new world.
 		resp := packet.NewWriterWithSize(packet.SMsgNewWorld, 0)
 		resp.Uint32(char.Map)
-		resp.Float32(s.character.PositionX)
-		resp.Float32(s.character.PositionY)
-		resp.Float32(s.character.PositionZ)
+		resp.Float32(snap.PositionX)
+		resp.Float32(snap.PositionY)
+		resp.Float32(snap.PositionZ)
 		resp.Float32(0.0)
 		s.gameSocket.Send(resp)
 
-		// we need to modify session in a safe thread (goroutine)
-		s.sessionSafeFuChan <- func(session *GameSession) {
+		// Update session-owned state on the session goroutine. Drop the socket
+		// if the session is shutting down (B14: no orphan resources).
+		select {
+		case s.sessionSafeFuChan <- func(session *GameSession) {
 			if session.character != nil {
 				session.worldSocket = socket
 			}
-
 			if session.showGameserverConnChangeToClient {
-				session.SendSysMessage(fmt.Sprintf("Connection recovered! New gameserver: %s. Sorry for inconvenience.", s.worldSocket.Address()))
+				session.SendSysMessage(fmt.Sprintf("Connection recovered! New gameserver: %s. Sorry for inconvenience.", socket.Address()))
 			} else {
 				session.SendSysMessage("Connection recovered! Sorry for inconvenience.")
 			}
+		}:
+		case <-s.ctx.Done():
+			socket.Close()
+			return
 		}
-	}(s.character.GUID)
+	}()
 }
 
 func (s *GameSession) onLoggedOut() {
