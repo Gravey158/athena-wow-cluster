@@ -4,7 +4,7 @@ metadata:
   name: mariadb-operator
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-28"
+    argocd.argoproj.io/sync-wave: "-27"   # after mariadb-operator-crds (-29)
 spec:
   project: default
   source:

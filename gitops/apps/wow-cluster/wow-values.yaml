@@ -7,10 +7,12 @@ tc9ImagesTag: &defaultImagesTag "v0.0.4"
 
 # Subcharts.
 redis:
-  enabled: true
-  architecture: standalone
-  auth:
-    enabled: false
+  # Disabled: Bitnami changed image-hosting policy in 2025, the chart-pinned
+  # docker.io/bitnami/redis:7.2.3-debian-11-r1 tag is gone. Re-enable once we
+  # either pin a newer chart version or switch to an official redis image
+  # (chart modification needed). Most ToCloud9 services tolerate redis being
+  # absent for the smoke-test phase; revisit if any service hard-depends on it.
+  enabled: false
 nats:
   enabled: true
   config:
