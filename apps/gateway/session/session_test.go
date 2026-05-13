@@ -406,7 +406,13 @@ func TestGameSessionLogin(t *testing.T) {
 	})).Return((<-chan eBroadcaster.Event)(make(chan eBroadcaster.Event)))
 
 	worldSocketReadChan := make(chan *packet.Packet, 100)
+	// Worldserver-AC's first packet on accept is SMsgAuthChallenge (server-
+	// side TCP-accept handshake). Then after the gateway forwards
+	// CMsgAuthSession, AC processes auth and sends SMsgAuthResponse from
+	// WorldSession::InitializeSessionCallback. The new gateway code (B10 fix)
+	// waits for SMsgAuthResponse specifically.
 	worldSocketReadChan <- packet.NewWriter(packet.SMsgAuthChallenge).ToPacket()
+	worldSocketReadChan <- packet.NewWriter(packet.SMsgAuthResponse).ToPacket()
 	worldSocket := &mocks.Socket{}
 	worldSocket.On("SendPacket", mock.Anything).Return()
 	worldSocket.On("Send", mock.MatchedBy(func(wr *packet.Writer) bool {

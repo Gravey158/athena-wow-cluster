@@ -482,21 +482,50 @@ func (s *GameSession) connectToGameServerWithAddress(ctx context.Context, charac
 
 	socket.SendPacket(s.authPacket)
 
-	select {
-	case p, open := <-socket.ReadChannel():
-		if !open {
-			return nil, fmt.Errorf("world socket closed")
+	// B10 fix: replace blind read-then-sleep with explicit wait for
+	// SMsgAuthResponse. AC sends SMSG_AUTH_RESPONSE(AUTH_OK) from
+	// WorldSession::InitializeSessionCallback (src/server/game/Server/
+	// WorldSession.cpp:1498 in walkline AC fork) AFTER the WorldSession
+	// has been fully added to the session manager and its character-DB
+	// query holder loaded. That's exactly the "session is ready"
+	// signal the previous 200ms sleep was approximating.
+	//
+	// Bonus B-cousin fix: the legacy `if p.Opcode != SMsgAuthChallenge`
+	// branch echoed unexpected packets back to the WORLDSOCKET, which
+	// is almost certainly a bug (would have caused worldserver to see
+	// its own packet echoed). Now we forward to the gamesocket (client)
+	// for any packet that isn't SMsgAuthResponse / SMsgAuthChallenge.
+	authWaitCtx, authWaitCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer authWaitCancel()
+	authReceived := false
+	for !authReceived {
+		select {
+		case p, open := <-socket.ReadChannel():
+			if !open {
+				return nil, fmt.Errorf("world socket closed before SMsgAuthResponse")
+			}
+			switch p.Opcode {
+			case packet.SMsgAuthResponse:
+				// WorldSession fully initialized. Do NOT forward to client --
+				// gateway already sent client its own SMsgAuthResponse during
+				// the earlier client-side auth handshake (AuthSession in
+				// gamesocket.go). A duplicate would confuse the client.
+				authReceived = true
+			case packet.SMsgAuthChallenge:
+				// Legacy branch: worldserver re-challenges gateway. Not
+				// observed in standard ToCloud9+AC config but preserve
+				// silent-drop behavior for safety.
+			default:
+				// Any other packet the worldserver sends pre-auth-response
+				// (rare; possibly addon-info / warden init from C++ patches)
+				// should be forwarded to the client, not echoed back to the
+				// worldserver as the previous code did.
+				sockets.SendOrCancel(s.ctx, s.gameSocket.WriteChannel(), p)
+			}
+		case <-authWaitCtx.Done():
+			return nil, fmt.Errorf("timeout waiting for SMsgAuthResponse from worldserver")
 		}
-		if p.Opcode != packet.SMsgAuthChallenge {
-			// B9: shutdown-safe forward back to socket.
-			sockets.SendOrCancel(ctx, socket.WriteChannel(), p)
-		}
-	case <-ctx.Done():
-		return nil, ctx.Err()
 	}
-
-	// we need give some time to add session on the world side
-	time.Sleep(time.Millisecond * 200)
 
 	if preLoginHook != nil {
 		preLoginHook(socket)
