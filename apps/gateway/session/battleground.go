@@ -40,7 +40,7 @@ func (s *GameSession) HandleEnqueueToBattleground(ctx context.Context, p *packet
 	if joinAsGroup > 0 {
 		groupResp, err := s.groupServiceClient.GetGroupByMember(ctx, &pbGroup.GetGroupByMemberRequest{
 			Api:     gateway.SupportedGroupServiceVer,
-			RealmID: gateway.RealmID,
+			RealmID: s.realmID,
 			Player:  s.character.GUID,
 		})
 		if err != nil {
@@ -82,7 +82,7 @@ func (s *GameSession) HandleEnqueueToBattleground(ctx context.Context, p *packet
 
 	_, err = s.matchmakingServiceClient.EnqueueToBattleground(ctx, &pb.EnqueueToBattlegroundRequest{
 		Api:          gateway.SupportedMatchmakingServiceVer,
-		RealmID:      gateway.RealmID,
+		RealmID:      s.realmID,
 		LeaderGUID:   s.character.GUID,
 		PartyMembers: members,
 		LeadersLvl:   uint32(s.character.Level),
@@ -126,7 +126,7 @@ func (s *GameSession) HandleBattlegroundPort(ctx context.Context, p *packet.Pack
 func (s *GameSession) leaveBattlegroundQueue(ctx context.Context, bgTypeID uint32) error {
 	_, err := s.matchmakingServiceClient.RemovePlayerFromQueue(ctx, &pb.RemovePlayerFromQueueRequest{
 		Api:              gateway.SupportedMatchmakingServiceVer,
-		RealmID:          gateway.RealmID,
+		RealmID:          s.realmID,
 		PlayerGUID:       s.character.GUID,
 		BattlegroundType: bgTypeID,
 	})
@@ -145,7 +145,7 @@ func (s *GameSession) leaveBattlegroundQueue(ctx context.Context, bgTypeID uint3
 func (s *GameSession) enterBattleground(ctx context.Context) error {
 	res, err := s.matchmakingServiceClient.BattlegroundQueueDataForPlayer(ctx, &pb.BattlegroundQueueDataForPlayerRequest{
 		Api:        gateway.SupportedMatchmakingServiceVer,
-		RealmID:    gateway.RealmID,
+		RealmID:    s.realmID,
 		PlayerGUID: s.character.GUID,
 	})
 	if err != nil {
@@ -172,7 +172,7 @@ func (s *GameSession) enterBattleground(ctx context.Context) error {
 	crossrealmAdjustedPlayerGUID := s.character.GUID
 	isCrossrealm := bgData.BattlegroupID != 0
 	if isCrossrealm {
-		crossrealmAdjustedPlayerGUID = guid.NewCrossrealmPlayerGUID(uint16(gateway.RealmID), guid.LowType(s.character.GUID)).GetRawValue()
+		crossrealmAdjustedPlayerGUID = guid.NewCrossrealmPlayerGUID(uint16(s.realmID), guid.LowType(s.character.GUID)).GetRawValue()
 	}
 
 	if desiredServerAddress != oldServerAddress {
@@ -201,7 +201,7 @@ func (s *GameSession) enterBattleground(ctx context.Context) error {
 
 	_, err = s.matchmakingServiceClient.PlayerJoinedBattleground(ctx, &pb.PlayerJoinedBattlegroundRequest{
 		Api:          gateway.SupportedMatchmakingServiceVer,
-		RealmID:      gateway.RealmID,
+		RealmID:      s.realmID,
 		PlayerGUID:   s.character.GUID,
 		InstanceID:   bgData.AssignedBattlegroundInstanceID,
 		IsCrossRealm: isCrossrealm,

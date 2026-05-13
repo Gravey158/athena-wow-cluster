@@ -319,7 +319,12 @@ func (s *GameSession) HandleGetMailList(ctx context.Context, p *packet.Packet) e
 				wr.Int32(0)
 			}
 			wr.Int32(int32(attachment.RandomPropertyID))
-			wr.Int32(int32(attachment.RandomPropertyID))
+			// B64: WoW SMSG_MAIL_LIST_RESULT item block has randomPropertyID
+			// followed by SuffixFactor (proto field PropertySeed) -- they
+			// drive separate item-name suffix tables. Previously this wrote
+			// RandomPropertyID twice, so items with a non-zero PropertySeed
+			// rendered the wrong magical suffix.
+			wr.Int32(int32(attachment.PropertySeed))
 			wr.Int32(int32(attachment.Count))
 			wr.Int32(attachment.Charges)
 			wr.Int32(attachment.Durability) // TODO: Add MaxDurability
