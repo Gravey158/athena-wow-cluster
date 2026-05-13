@@ -28,9 +28,17 @@ RUN update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang 100
 
 RUN mkdir repo
 RUN cd repo && git init && \
+    git config user.email "build@local" && git config user.name "build" && \
     git remote add origin https://github.com/walkline/azerothcore-wotlk.git && \
     git fetch --depth 1 origin f3d7356ec652a9fc1d75835e642fd8b760282979  && \
     git checkout FETCH_HEAD
+
+# Apply local AC patches (in alphabetic order). Each patch ships as a
+# unified diff in game-server/azerothcore/patches/*.patch.
+COPY game-server/azerothcore/patches/ /repo/patches/
+RUN cd /repo && for p in /repo/patches/*.patch; do \
+        echo "Applying $p" && git apply --whitespace=fix "$p"; \
+    done
 
 COPY --from=build-sidecar ./go/src/github.com/walkline/ToCloud9/libsidecar.so ./repo/deps/libsidecar/libsidecar.so
 COPY --from=build-sidecar ./go/src/github.com/walkline/ToCloud9/libsidecar.h ./repo/deps/libsidecar/include/libsidecar.h

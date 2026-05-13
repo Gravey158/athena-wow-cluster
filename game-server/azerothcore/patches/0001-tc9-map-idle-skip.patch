@@ -1,0 +1,29 @@
+--- a/src/server/game/Maps/Map.cpp
++++ b/src/server/game/Maps/Map.cpp
+@@ -429,6 +429,26 @@
+ 
+ void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
+ {
++    // TC9 idle-skip: when a base map has no players, no force-active
++    // objects, no pending scripts, and is not a battleground/arena,
++    // the bulk of Map::Update has no work. Advance only the cheap
++    // world-time clocks and return early. Gated on cluster mode so
++    // single-node operators see no change.
++    if (t_diff
++        && sToCloud9Sidecar->ClusterModeEnabled()
++        && !HavePlayers()
++        && !IsBattlegroundOrArena()
++        && _updatableObjectList.empty()
++        && m_scriptSchedule.empty())
++    {
++        _mapCollisionData.GetDynamicTree().update(t_diff);
++        Events.Update(t_diff);
++        UpdateWeather(t_diff);
++        UpdateExpiredCorpses(t_diff);
++        sScriptMgr->OnMapUpdate(this, t_diff);
++        return;
++    }
++
+     if (t_diff)
+         _mapCollisionData.GetDynamicTree().update(t_diff);
+ 
