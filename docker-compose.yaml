@@ -41,7 +41,7 @@ services:
     command: >
       sh -c "curl -L https://raw.githubusercontent.com/walkline/azerothcore-wotlk/cluster-mode/src/server/apps/worldserver/worldserver.conf.dist -o /config/worldserver.conf &&
       mkdir -p /data && cd /data &&
-      curl -L -o data.zip https://github.com/wowgaming/client-data/releases/download/v16/data.zip &&
+      curl -L -o data.zip https://github.com/wowgaming/client-data/releases/download/v19/data.zip &&
       unzip -q data.zip &&
       rm -f data.zip"
     profiles:
@@ -312,6 +312,46 @@ services:
       AC_SOAP_ENABLE: 0
       AC_DATA_DIR: /data
       AC_CLUSTER_ENABLED: 1
+      # Topology split (foundation for ADR-004 4-pod design): ac-1 hosts
+      # classic-era continent maps (Eastern Kingdoms, Kalimdor) plus all
+      # pre-BC instances/raids/BGs (map IDs < 530). ac-2 hosts Outland +
+      # Northrend + BC+WotLK content (map IDs >= 530). Empty string =
+      # "any map" -- explicitly enumerate to make the registry's assignment
+      # deterministic and to make blast radius of one pod bounded to
+      # one map era.
+      AC_CLUSTER_AVAILABLE_MAPS: "0,1,30,33,34,36,37,43,47,48,70,90,109,129,189,209,229,230,249,269,289,309,329,349,369,389,409,429,449,450,451,469,489,509,529"
+      CHARACTER_GUIDS_BUFFER_SIZE: 5
+      ITEM_GUIDS_BUFFER_SIZE: 50
+      NATS_URL: nats://nats:4222
+      GRPC_PORT: 9509
+      GUID_PROVIDER_SERVICE_ADDRESS: guidserver:8996
+      SERVERS_REGISTRY_SERVICE_ADDRESS: servers-registry:8999
+      MATCHMAKING_SERVICE_ADDRESS: matchmakingserver:8994
+    profiles:
+      - ac
+
+  gameserver-ac-2:
+    image: wow-local-gameserver-ac:latest
+    depends_on:
+      database-ac:
+        condition: service_healthy
+      gameserver-ac:
+        condition: service_started
+    volumes:
+      - core_etc:/repo/bin/etc
+      - client_data:/data
+    environment:
+      AC_LOGIN_DATABASE_INFO: ${AUTH_DB_HOST};${AUTH_DB_PORT};${AUTH_DB_USER};${AUTH_DB_PASS};${AUTH_DB_NAME}
+      AC_WORLD_DATABASE_INFO: ${WORLD_DB_HOST};${WORLD_DB_PORT};${WORLD_DB_USER};${WORLD_DB_PASS};${WORLD_DB_NAME}
+      AC_CHARACTER_DATABASE_INFO: ${CHAR_DB_HOST};${CHAR_DB_PORT};${CHAR_DB_USER};${CHAR_DB_PASS};${CHAR_DB_NAME}
+      AC_CONSOLE_ENABLE: 0
+      AC_RA_ENABLE: 0
+      AC_SOAP_ENABLE: 0
+      AC_DATA_DIR: /data
+      AC_CLUSTER_ENABLED: 1
+      # See gameserver-ac comment: ac-2 takes Outland (530), Northrend (571),
+      # and all BC/WotLK content (>=530 except Eastern Kingdom BGs).
+      AC_CLUSTER_AVAILABLE_MAPS: "530,531,532,533,534,540,542,543,544,545,546,547,548,550,552,553,554,555,556,557,558,559,560,562,564,565,566,568,571,572,574,575,576,578,580,582,584,585,586,587,588,589,590,591,593,594,595,599,600,601,602,603,604,607,608,609,610,612,613,614,615,616,617,618,619,620,621,622,623,624,628,631,632,641,642,647,649,650,658,668,672,673,712,713,724"
       CHARACTER_GUIDS_BUFFER_SIZE: 5
       ITEM_GUIDS_BUFFER_SIZE: 50
       NATS_URL: nats://nats:4222
