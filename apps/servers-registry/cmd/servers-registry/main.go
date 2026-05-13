@@ -62,7 +62,7 @@ func main() {
 	rdb := redis.NewClient(opt)
 	pingRes := rdb.Ping(context.Background())
 	if pingRes.Err() != nil {
-		log.Fatal().Err(err).Msg("can't connect to redis")
+		log.Fatal().Err(pingRes.Err()).Msg("can't connect to redis")
 	}
 	defer rdb.Close()
 
@@ -92,7 +92,7 @@ func main() {
 		healthChecker,
 		metricsConsumer,
 		events.NewServerRegistryProducerNatsJSON(nc, "0.0.1"),
-		[]uint32{1},
+		supportedRealms,
 	)
 	if err != nil {
 		log.Fatal().Err(err).Msg("can't create gateway service")
