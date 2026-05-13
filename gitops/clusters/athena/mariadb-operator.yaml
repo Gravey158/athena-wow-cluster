@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mariadb-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-28"
+spec:
+  project: default
+  source:
+    repoURL: https://mariadb-operator.github.io/mariadb-operator
+    chart: mariadb-operator
+    targetRevision: "26.3.0"
+    helm:
+      releaseName: mariadb-operator
+      values: |
+        # CRDs are shipped by the operator chart itself; ArgoCD applies them
+        # first since skipCrds defaults to false.
+        fullnameOverride: mariadb-operator
+        # Single controller pod is fine for our scale (one MariaDB cluster, 3 pods).
+        replicas: 1
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 256Mi
+        # Disable metrics until Phase 1 (we add ServiceMonitor then).
+        metrics:
+          enabled: false
+        # Webhook needs cert -- chart auto-provisions via cert-manager which we have.
+        webhook:
+          cert:
+            certManager:
+              enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mariadb-operator
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

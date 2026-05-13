@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wow-galera-my-cnf
+  namespace: wow-cluster
+  annotations:
+    argocd.argoproj.io/sync-wave: "-12"
+data:
+  my.cnf: |
+    [mariadb]
+    # AzerothCore expects MySQL-5.7-compatible behavior; tune accordingly.
+    default-storage-engine        = InnoDB
+    character-set-server          = utf8mb4
+    collation-server              = utf8mb4_general_ci
+    max_allowed_packet            = 64M
+    innodb_buffer_pool_size       = 512M
+    innodb_flush_log_at_trx_commit = 2
+
+    # Auth-plugin for legacy clients (AC's mysqlclient links against libmariadbclient,
+    # which honours mysql_native_password). MariaDB 11.x default differs.
+    default-authentication-plugin = mysql_native_password
+
+    # Galera tuning -- conservative for first deploy, revisit in Phase 4 perf.
+    wsrep_slave_threads           = 2
+    wsrep_provider_options        = "gcache.size=128M"

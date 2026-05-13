@@ -1,0 +1,50 @@
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Grant
+metadata:
+  name: acore-auth-grant
+  namespace: wow-cluster
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+spec:
+  mariaDbRef:
+    name: wow-galera
+  privileges:
+    - ALL PRIVILEGES
+  database: acore_auth
+  table: "*"
+  username: acore
+  host: "%"
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Grant
+metadata:
+  name: acore-world-grant
+  namespace: wow-cluster
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+spec:
+  mariaDbRef:
+    name: wow-galera
+  privileges:
+    - ALL PRIVILEGES
+  database: acore_world
+  table: "*"
+  username: acore
+  host: "%"
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Grant
+metadata:
+  name: acore-characters-grant
+  namespace: wow-cluster
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+spec:
+  mariaDbRef:
+    name: wow-galera
+  privileges:
+    - ALL PRIVILEGES
+  database: acore_characters
+  table: "*"
+  username: acore
+  host: "%"

@@ -1,0 +1,41 @@
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Database
+metadata:
+  name: acore-auth
+  namespace: wow-cluster
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  name: acore_auth
+  mariaDbRef:
+    name: wow-galera
+  characterSet: utf8mb4
+  collate: utf8mb4_general_ci
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Database
+metadata:
+  name: acore-world
+  namespace: wow-cluster
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  name: acore_world
+  mariaDbRef:
+    name: wow-galera
+  characterSet: utf8mb4
+  collate: utf8mb4_general_ci
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Database
+metadata:
+  name: acore-characters
+  namespace: wow-cluster
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  name: acore_characters
+  mariaDbRef:
+    name: wow-galera
+  characterSet: utf8mb4
+  collate: utf8mb4_general_ci

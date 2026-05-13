@@ -1,0 +1,59 @@
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: MariaDB
+metadata:
+  name: wow-galera
+  namespace: wow-cluster
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  image: mariadb:11.4
+  rootPasswordSecretKeyRef:
+    name: mariadb-root
+    key: password
+    generate: false
+
+  replicas: 3
+
+  storage:
+    size: 20Gi
+    storageClassName: longhorn-nvme
+
+  galera:
+    enabled: true
+    primary:
+      podIndex: 0
+      automaticFailover: true
+    sst: mariabackup
+    replicaThreads: 1
+    config:
+      reuseStorageVolume: false
+      volumeClaimTemplate:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: longhorn-nvme
+        resources:
+          requests:
+            storage: 5Gi
+    recovery:
+      enabled: true
+      minClusterSize: "1"
+
+  myCnfConfigMapKeyRef:
+    name: wow-galera-my-cnf
+    key: my.cnf
+
+  podDisruptionBudget:
+    maxUnavailable: 1
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+
+  # Service for application connections (load-balances across galera replicas).
+  service:
+    type: ClusterIP
+  # Primary service points at the writer-elected pod -- AC needs single-writer.
+  primaryService:
+    type: ClusterIP
