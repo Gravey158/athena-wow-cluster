@@ -12,6 +12,11 @@ import (
 )
 
 type CharactersListener struct {
+	// B58: process-lifetime ctx. Previously the NATS handlers below used
+	// context.TODO() for AddCharacter / RemoveCharacter, so SIGTERM
+	// couldn't cancel the underlying in-mem mutation (cheap) nor any
+	// future DB-backed implementation.
+	ctx        context.Context
 	charRepo   repo.CharactersRepo
 	channelMgr *ChannelManager
 	nc         *nats.Conn
@@ -19,8 +24,9 @@ type CharactersListener struct {
 	subs       []*nats.Subscription
 }
 
-func NewCharactersListener(charRepo repo.CharactersRepo, channelMgr *ChannelManager, nc *nats.Conn) *CharactersListener {
+func NewCharactersListener(ctx context.Context, charRepo repo.CharactersRepo, channelMgr *ChannelManager, nc *nats.Conn) *CharactersListener {
 	return &CharactersListener{
+		ctx:        ctx,
 		charRepo:   charRepo,
 		channelMgr: channelMgr,
 		nc:         nc,
@@ -37,7 +43,7 @@ func (c *CharactersListener) Listen() error {
 			return
 		}
 
-		err = c.charRepo.AddCharacter(context.TODO(), &repo.Character{
+		err = c.charRepo.AddCharacter(c.ctx, &repo.Character{
 			RealmID:   loggedInP.RealmID,
 			GatewayID: loggedInP.GatewayID,
 			GUID:      loggedInP.CharGUID,
@@ -95,7 +101,7 @@ func (c *CharactersListener) Listen() error {
 			}
 		}
 
-		err = c.charRepo.RemoveCharacter(context.TODO(), loggedOutP.RealmID, loggedOutP.CharGUID)
+		err = c.charRepo.RemoveCharacter(c.ctx, loggedOutP.RealmID, loggedOutP.CharGUID)
 		if err != nil {
 			log.Error().Err(err).Msg("can't remove character in GWEventCharacterLoggedOut event")
 			return

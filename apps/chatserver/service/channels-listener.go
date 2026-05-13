@@ -10,14 +10,21 @@ import (
 )
 
 type ChannelsListener struct {
+	// B58: process-lifetime ctx for sync-join/leave callback DB writes.
+	// Previously the NATS callbacks used context.TODO() so SIGTERM could
+	// not abort an in-flight GetOrCreateChannel (which does several DB
+	// reads + an INSERT) or LeaveChannel (which writes through to the
+	// member table).
+	ctx        context.Context
 	serviceID  string
 	channelMgr *ChannelManager
 	nc         *nats.Conn
 	subs       []*nats.Subscription
 }
 
-func NewChannelsListener(serviceID string, channelMgr *ChannelManager, nc *nats.Conn) *ChannelsListener {
+func NewChannelsListener(ctx context.Context, serviceID string, channelMgr *ChannelManager, nc *nats.Conn) *ChannelsListener {
 	return &ChannelsListener{
+		ctx:        ctx,
 		serviceID:  serviceID,
 		channelMgr: channelMgr,
 		nc:         nc,
@@ -37,7 +44,7 @@ func (c *ChannelsListener) Listen() error {
 		}
 
 		ch, err := c.channelMgr.GetOrCreateChannel(
-			context.TODO(), payload.RealmID, payload.ChannelName,
+			c.ctx, payload.RealmID, payload.ChannelName,
 			payload.ChannelID, 0, "", ChannelFlagCustom,
 		)
 		if err != nil {
@@ -45,7 +52,7 @@ func (c *ChannelsListener) Listen() error {
 			return
 		}
 
-		if err := ch.JoinChannel(context.TODO(), c.channelMgr, payload.RealmID, payload.PlayerGUID, payload.PlayerName, ""); err != nil {
+		if err := ch.JoinChannel(c.ctx, c.channelMgr, payload.RealmID, payload.PlayerGUID, payload.PlayerName, ""); err != nil {
 			log.Debug().Err(err).Str("channel", payload.ChannelName).Uint64("player", payload.PlayerGUID).Msg("sync: join skipped")
 		}
 	})
@@ -70,7 +77,7 @@ func (c *ChannelsListener) Listen() error {
 			return
 		}
 
-		_, err = ch.LeaveChannel(context.TODO(), c.channelMgr, payload.RealmID, payload.PlayerGUID)
+		_, err = ch.LeaveChannel(c.ctx, c.channelMgr, payload.RealmID, payload.PlayerGUID)
 		if err != nil {
 			log.Debug().Err(err).Str("channel", payload.ChannelName).Uint64("player", payload.PlayerGUID).Msg("sync: leave skipped")
 		}

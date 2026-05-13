@@ -11,13 +11,18 @@ import (
 )
 
 type ServersRegistryListener struct {
+	// B58: ctx is the process-lifetime context. Previously the NATS
+	// callback used context.TODO() for the repo write, so SIGTERM could
+	// not abort a mid-flight RemoveCharactersWithRealm.
+	ctx      context.Context
 	charRepo repo.CharactersRepo
 	nc       *nats.Conn
 	subs     []*nats.Subscription
 }
 
-func NewServersRegistryListener(charRepo repo.CharactersRepo, nc *nats.Conn) *ServersRegistryListener {
+func NewServersRegistryListener(ctx context.Context, charRepo repo.CharactersRepo, nc *nats.Conn) *ServersRegistryListener {
 	return &ServersRegistryListener{
+		ctx:      ctx,
 		charRepo: charRepo,
 		nc:       nc,
 	}
@@ -32,7 +37,7 @@ func (c *ServersRegistryListener) Listen() error {
 			return
 		}
 
-		err = c.charRepo.RemoveCharactersWithRealm(context.TODO(), payload.RealmID)
+		err = c.charRepo.RemoveCharactersWithRealm(c.ctx, payload.RealmID)
 		if err != nil {
 			log.Error().Err(err).Msg("can't add character in GWEventCharacterLoggedIn event")
 			return

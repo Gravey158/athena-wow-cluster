@@ -139,19 +139,19 @@ func main() {
 	msgProducer := sender.NewMsgProducerNatsJSON(nc, "ALL") // Broadcast to all gateways
 
 	// listeners setup
-	charListener := service.NewCharactersListener(charRepo, channelMgr, nc)
+	charListener := service.NewCharactersListener(ctx, charRepo, channelMgr, nc)
 	err = charListener.Listen()
 	if err != nil {
 		log.Fatal().Err(err).Msg("can't start listen to characters events-broadcaster")
 	}
 
-	srListener := service.NewServersRegistryListener(charRepo, nc)
+	srListener := service.NewServersRegistryListener(ctx, charRepo, nc)
 	err = srListener.Listen()
 	if err != nil {
 		log.Fatal().Err(err).Msg("can't start listen to services registry events-broadcaster")
 	}
 
-	channelsListener := service.NewChannelsListener(serviceID, channelMgr, nc)
+	channelsListener := service.NewChannelsListener(ctx, serviceID, channelMgr, nc)
 	err = channelsListener.Listen()
 	if err != nil {
 		log.Fatal().Err(err).Msg("can't start listen to channel sync events")
