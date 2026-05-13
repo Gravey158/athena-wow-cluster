@@ -178,6 +178,10 @@ func (g *guildNatsListener) newSubscribe(event events.GuildServiceEvent, payload
 		handler()
 	})
 	if err != nil {
+		// B52: roll back any prior successful subscriptions. Listen() chains
+		// 11 newSubscribe calls; if one fails after others succeeded, the
+		// caller would otherwise be left with orphan handlers.
+		_ = g.unsubscribe()
 		return err
 	}
 
