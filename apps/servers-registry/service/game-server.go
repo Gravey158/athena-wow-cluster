@@ -25,6 +25,11 @@ type GameServer interface {
 }
 
 type gameServerImpl struct {
+	// ctx is the process-lifetime context. Callbacks invoked by the
+	// healthchecker and metrics-consumer goroutines (onServerUnhealthy,
+	// onMetricsUpdate) need a ctx for their DB writes; previously they
+	// hardcoded context.Background() and lost all SIGTERM-cancellation. (B60)
+	ctx         context.Context
 	r           repo.GameServerRepo
 	checker     healthandmetrics.HealthChecker
 	metrics     healthandmetrics.MetricsConsumer
@@ -42,6 +47,7 @@ func NewGameServer(
 	supportedRealmIDs []uint32,
 ) (GameServer, error) {
 	service := &gameServerImpl{
+		ctx:         ctx,
 		r:           r,
 		checker:     checker,
 		metrics:     metrics,
@@ -180,7 +186,7 @@ func (g *gameServerImpl) AvailableForMapAndRealm(ctx context.Context, mapID uint
 		}
 	}
 
-	return append(result), nil
+	return result, nil
 }
 
 func (g *gameServerImpl) RandomServerForRealm(ctx context.Context, realmID uint32) (*repo.GameServer, error) {
@@ -258,7 +264,7 @@ func (g *gameServerImpl) onServerUnhealthy(server *repo.GameServer, err error) {
 		Str("address", server.Address).
 		Msg("Game Server unhealthy! Removing...")
 
-	err = g.r.Remove(context.Background(), server.ID)
+	err = g.r.Remove(g.ctx, server.ID)
 	if err != nil {
 		log.Error().Err(err).Msg("can't remove server")
 		return
@@ -287,9 +293,9 @@ func (g *gameServerImpl) onServerUnhealthy(server *repo.GameServer, err error) {
 	var wsList []repo.GameServer
 
 	if server.IsCrossRealm {
-		wsList, err = g.ListOfCrossRealms(context.Background())
+		wsList, err = g.ListOfCrossRealms(g.ctx)
 	} else {
-		wsList, err = g.ListForRealm(context.Background(), server.RealmID)
+		wsList, err = g.ListForRealm(g.ctx, server.RealmID)
 	}
 
 	if err != nil {
@@ -297,7 +303,7 @@ func (g *gameServerImpl) onServerUnhealthy(server *repo.GameServer, err error) {
 		return
 	}
 
-	_, err = g.distributeMapsToServers(context.Background(), wsList)
+	_, err = g.distributeMapsToServers(g.ctx, wsList)
 	if err != nil {
 		log.Error().Err(err).Msg("couldn't distribute maps to servers")
 		return
@@ -358,7 +364,7 @@ func (g *gameServerImpl) distributeMapsToServers(ctx context.Context, servers []
 }
 
 func (g *gameServerImpl) onMetricsUpdate(server *repo.GameServer, m *healthandmetrics.MetricsRead) {
-	err := g.r.Update(context.Background(), server.ID, func(s *repo.GameServer) *repo.GameServer {
+	err := g.r.Update(g.ctx, server.ID, func(s *repo.GameServer) *repo.GameServer {
 		s.ActiveConnections = uint32(m.ActiveConnections)
 		s.Diff.Mean = uint32(m.DelayMean)
 		s.Diff.Median = uint32(m.DelayMedian)

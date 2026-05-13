@@ -18,6 +18,10 @@ type Gateway interface {
 }
 
 type gatewayImpl struct {
+	// ctx is the process-lifetime context. Same rationale as gameServerImpl
+	// (B60): used by onServerUnhealthy / onMetricsUpdate callbacks for
+	// DB writes that previously hardcoded Background()/TODO().
+	ctx       context.Context
 	r         repo.GatewayRepo
 	checker   healthandmetrics.HealthChecker
 	eProducer events.ServerRegistryProducer
@@ -30,6 +34,7 @@ func NewGateway(
 	supportedRealmIDs []uint32,
 ) (Gateway, error) {
 	service := &gatewayImpl{
+		ctx:       ctx,
 		r:         r,
 		checker:   checker,
 		eProducer: eProducer,
@@ -125,7 +130,7 @@ func (b *gatewayImpl) onServerUnhealthy(server *repo.GatewayServer, err error) {
 		Str("healthCheckAddress", server.HealthCheckAddr).
 		Msg("Gateway unhealthy! Removing...")
 
-	err = b.r.Remove(context.TODO(), server.HealthCheckAddr)
+	err = b.r.Remove(b.ctx, server.HealthCheckAddr)
 	if err != nil {
 		log.Error().Err(err).Msg("can't remove server")
 	}
@@ -147,7 +152,7 @@ func (b *gatewayImpl) onServerUnhealthy(server *repo.GatewayServer, err error) {
 }
 
 func (b *gatewayImpl) onMetricsUpdate(server *repo.GatewayServer, m *healthandmetrics.MetricsRead) {
-	err := b.r.Update(context.Background(), server.ID, func(s repo.GatewayServer) repo.GatewayServer {
+	err := b.r.Update(b.ctx, server.ID, func(s repo.GatewayServer) repo.GatewayServer {
 		s.ActiveConnections = m.ActiveConnections
 		return s
 	})
