@@ -270,6 +270,8 @@ func (c *groupEventsConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions.
+			_ = c.unsubscribe()
 			return err
 		}
 
@@ -292,6 +294,8 @@ func (c *groupEventsConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions.
+			_ = c.unsubscribe()
 			return err
 		}
 
@@ -314,6 +318,8 @@ func (c *groupEventsConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions.
+			_ = c.unsubscribe()
 			return err
 		}
 
@@ -336,6 +342,8 @@ func (c *groupEventsConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions.
+			_ = c.unsubscribe()
 			return err
 		}
 
@@ -358,6 +366,8 @@ func (c *groupEventsConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions.
+			_ = c.unsubscribe()
 			return err
 		}
 
@@ -380,6 +390,8 @@ func (c *groupEventsConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions.
+			_ = c.unsubscribe()
 			return err
 		}
 
@@ -402,6 +414,8 @@ func (c *groupEventsConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions.
+			_ = c.unsubscribe()
 			return err
 		}
 
@@ -424,6 +438,8 @@ func (c *groupEventsConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions.
+			_ = c.unsubscribe()
 			return err
 		}
 
@@ -446,6 +462,8 @@ func (c *groupEventsConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions.
+			_ = c.unsubscribe()
 			return err
 		}
 
@@ -468,6 +486,8 @@ func (c *groupEventsConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions.
+			_ = c.unsubscribe()
 			return err
 		}
 
@@ -490,6 +510,8 @@ func (c *groupEventsConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions.
+			_ = c.unsubscribe()
 			return err
 		}
 
@@ -512,6 +534,8 @@ func (c *groupEventsConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions.
+			_ = c.unsubscribe()
 			return err
 		}
 

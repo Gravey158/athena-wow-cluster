@@ -125,6 +125,11 @@ func (c *gatewayConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions; otherwise
+			// a partial Listen() leaves orphan NATS handlers that the caller
+			// can't reach via Stop() (the consumer is typically discarded
+			// after a Listen() error in our main.go fatal paths).
+			_ = c.unsubscribe()
 			return err
 		}
 
@@ -147,6 +152,11 @@ func (c *gatewayConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions; otherwise
+			// a partial Listen() leaves orphan NATS handlers that the caller
+			// can't reach via Stop() (the consumer is typically discarded
+			// after a Listen() error in our main.go fatal paths).
+			_ = c.unsubscribe()
 			return err
 		}
 
@@ -169,6 +179,11 @@ func (c *gatewayConsumerImpl) Listen() error {
 			}
 		})
 		if err != nil {
+			// B52: roll back any already-established subscriptions; otherwise
+			// a partial Listen() leaves orphan NATS handlers that the caller
+			// can't reach via Stop() (the consumer is typically discarded
+			// after a Listen() error in our main.go fatal paths).
+			_ = c.unsubscribe()
 			return err
 		}
 

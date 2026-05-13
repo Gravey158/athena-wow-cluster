@@ -26,7 +26,10 @@ type MetricsRead struct {
 	Delay99Percentile int
 	DelayMax          int
 
-	Raw []dto.MetricFamily
+	// B53: was []dto.MetricFamily by value -- protobuf v2 message types
+	// embed a sync.Mutex via MessageState, so append/range-by-value
+	// copies the lock. Use pointers instead.
+	Raw []*dto.MetricFamily
 }
 
 type MetricsObserver func(MetricsObservable, *MetricsRead)
@@ -220,12 +223,12 @@ func (h httpPrometheusMetricsReader) Read(observable MetricsObservable) (*Metric
 		return nil, fmt.Errorf("bad status code %d", resp.StatusCode)
 	}
 
-	metrics := []dto.MetricFamily{}
+	metrics := []*dto.MetricFamily{}
 	dec := expfmt.NewDecoder(resp.Body, expfmt.NewFormat(expfmt.TypeTextPlain))
 
 	for {
-		result := dto.MetricFamily{}
-		err = dec.Decode(&result)
+		result := &dto.MetricFamily{}
+		err = dec.Decode(result)
 		if err == io.EOF {
 			break
 		}

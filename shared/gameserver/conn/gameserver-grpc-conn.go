@@ -56,16 +56,27 @@ func (m *gameServerGRPCConnMgrImpl) GRPCConnByGameServerAddress(address string) 
 		return nil, fmt.Errorf("game server grpc address is empty for address '%v'", address)
 	}
 
-	if conn == nil {
-		conn, err = m.establishConn(connAddress)
-		if err == nil {
-			m.lock.Lock()
-			m.addressWithConn[connAddress] = conn
-			m.lock.Unlock()
-		}
+	if conn != nil {
+		return conn, nil
 	}
 
-	return conn, err
+	// B48: previously two concurrent callers for the same connAddress
+	// could both observe nil, both call grpc.Dial (a real network op),
+	// and both then store -- the loser's connection became unreachable
+	// and leaked. Take the write lock, re-check, only Dial if still nil.
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	if existing := m.addressWithConn[connAddress]; existing != nil {
+		return existing, nil
+	}
+
+	conn, err = m.establishConn(connAddress)
+	if err != nil {
+		return nil, err
+	}
+	m.addressWithConn[connAddress] = conn
+	return conn, nil
 }
 
 func (m *gameServerGRPCConnMgrImpl) establishConn(address string) (pb.WorldServerServiceClient, error) {
