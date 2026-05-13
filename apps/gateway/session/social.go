@@ -347,7 +347,11 @@ func (s *GameSession) HandleWho(ctx context.Context, p *packet.Packet) error {
 		w.Uint32(item.Lvl)
 		w.Uint32(item.Class)
 		w.Uint32(item.Race)
-		w.Uint8(uint8(item.Race))
+		// B62: WoW SMSG_WHO format is race(u32) + gender(u8) + zone(u32).
+		// Previously this wrote `uint8(item.Race)` -- the client received
+		// race-as-gender, which gives wildly wrong gender icons on /who
+		// (race=1=Human -> gender=1=Female, race=2=Orc -> gender=2=garbage).
+		w.Uint8(uint8(item.Gender))
 		w.Uint32(item.ZoneID)
 	}
 
