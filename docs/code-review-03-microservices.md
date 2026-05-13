@@ -131,6 +131,78 @@ Fixing this properly requires either deep-copy on read (cheap, doubles allocatio
 
 ## Verification
 
-For each of the seven microservices: `go build ./apps/<svc>/...`, `go vet ./apps/<svc>/...`, and `go test -race -count=1 ./apps/<svc>/...` all green. matchmakingserver has a pre-existing vet warning at `server/matchmaking.go:50` for an unkeyed struct literal — pre-dates this work, not in scope.
+For each of the seven microservices: `go build ./apps/<svc>/...`, `go vet ./apps/<svc>/...`, and `go test -race -count=1 ./apps/<svc>/...` all green. matchmakingserver had a pre-existing vet warning at `server/matchmaking.go:50` for an unkeyed struct literal — fixed in B46 (see follow-up below).
 
 E2E Wine-login verification of the gateway-side race-by-sleep fixes (B6, B10, B24) is still on the user; the microservice fixes here are server-side only and don't have a Wine code path to exercise them.
+
+## Follow-up: B45–B53 (deferred items + shared/ sweep)
+
+Three additional commit batches landed after the initial review-03 doc. The deferred PVPQueue ctx-threading was promoted out of the deferred list; the cache pointer-aliasing race in groupserver got a partial fix (mutex coverage of the `IsOnline` write); and a quick pass over `shared/` turned up three more bugs.
+
+### B45 — matchmakingserver: `PVPQueue.AddQueuedGroup` now takes ctx (commit `ea7537f`)
+
+The PVPQueue interface had a `AddQueuedGroup(g *QueuedGroup) error` signature with no context. `GenericBattlegroundQueue.AddQueuedGroup` called `q.process(context.Background())` internally — so even though `AddGroupToQueue(ctx, ...)` in the service had a perfectly good ctx from the gRPC frame, it was discarded between the service and the queue. Result: a client deadline could never abort the `BattlegroundsThatNeedPlayers` → `InviteGroups` → `SaveBattleground` chain inside the match loop.
+
+Threaded ctx through the interface, both impls (`GenericBattlegroundQueue`, `BattlegroundRandomQueue`), the 3 service call-sites, and 9 test call-sites. Also threaded ctx through `inviteGroupsToBG` and `getBattlegroundTemplate` (the latter is in-mem-only so largely cosmetic — but consistent).
+
+### B46 — matchmakingserver: unkeyed struct literal vet warning (commit `ea7537f`)
+
+`server/matchmaking.go:50` had a multi-line struct literal for `QueuesByRealmAndPlayerKey` with an unkeyed embedded field — vet flagged it. Single-line variants elsewhere stay as-is; vet only flags multi-line.
+
+### B47 — groupserver: data race on `member.IsOnline` write (commit `adaac2a`)
+
+`HandleCharacterLoggedIn/Out` called `groupMemberByGUID` which took the `cacheLock` RLock, dereferenced the map, released the lock, and returned the pointer. The caller then wrote `member.IsOnline = true/false` without any lock. Concurrent readers of `group.Members[i].IsOnline` (called from many service-layer `OnlineMemberGUIDs()` paths) could see torn writes.
+
+Take the write lock across the lookup AND the mutation. Mirrors the guildserver pattern, which already did this correctly.
+
+This does **not** fix the broader pointer-aliasing issue from the original review (cached `*GroupMember` pointers can be stale after `Update` if the caller passes a fresh `group` struct, or if `Delete` runs while a reader still holds a member pointer). That requires a cache redesign and stays deferred — but the most likely-to-fire race (single-flag write under cache miss of the parent group) is now plugged.
+
+### B48 — `shared/gameserver/conn/gameserver-grpc-conn.go`: grpc.Dial race (commit `1914114`)
+
+`GRPCConnByGameServerAddress` had a classic check-then-act race:
+
+```go
+m.lock.RLock()
+conn = m.addressWithConn[connAddress]
+m.lock.RUnlock()
+if conn == nil {
+    conn, _ = m.establishConn(connAddress)  // grpc.Dial, real network
+    m.lock.Lock()
+    m.addressWithConn[connAddress] = conn   // last writer wins
+    m.lock.Unlock()
+}
+```
+
+Two concurrent callers for the same address both see nil, both Dial, both store. The loser's `*grpc.ClientConn` becomes unreachable and leaks (Go GC eventually closes it but only on an unreference, which doesn't happen reliably — the OS file descriptor sits open). Plus duplicate Dial cost.
+
+Fixed with double-checked locking: read-lock fast-path returns immediately if the conn exists; otherwise take the write lock, re-check the map, only Dial if still nil. Standard Go pattern.
+
+### B52 — `shared/events/consumer-{gateway,group}.go`: orphan subscriptions on partial Listen() failure (commit `1914114`)
+
+Each `Listen()` calls `c.nc.Subscribe(...)` for each handler the caller provided (3 for gateway, 12 for group). If subscription N succeeds and N+1 fails, the function returns the error, but the subscriptions for handlers 1..N are still live in NATS. The caller path in every microservice is `if err = listener.Listen(); err != nil { log.Fatal... }` — the consumer is then abandoned without ever calling `Stop()`. Orphan goroutines per partial-failure recovery.
+
+Fix: call `c.unsubscribe()` to roll back all collected subscriptions before returning the error. Applied to both consumer-gateway.go and consumer-group.go; the same pattern probably exists in other `consumer-*.go` files but those were not exercised in this pass.
+
+### B53 — `shared/healthandmetrics/metrics-reader.go`: protobuf message copied by value (commit `1914114`)
+
+`go vet` flagged two lines:
+
+```
+metrics-reader.go:235: call of append copies lock value: dto.MetricFamily contains MessageState contains sync.Mutex
+metrics-reader.go:241: range var result copies lock: dto.MetricFamily ...
+```
+
+Protobuf v2's generated types embed `protoimpl.MessageState` which contains a `sync.Mutex`. Copying a `MetricFamily` by value (via `append(metrics, result)` and `for _, result := range metrics`) copies a locked-or-unlocked mutex — undefined behavior per Go's mutex rules.
+
+`MetricsRead.Raw` had type `[]dto.MetricFamily`. Grep showed no external code reads the `Raw` field, so changing it to `[]*dto.MetricFamily` is a zero-impact change. Updated the decode loop to allocate `result := &dto.MetricFamily{}` and `dec.Decode(result)`.
+
+### Remaining deferred items (post-B53)
+
+| ID | Service | Issue | Reason |
+|---|---|---|---|
+| B25 | gateway | 1s sleep after CharDelete async DB transaction | Needs AC ack opcode |
+| B27 | gateway | 500ms post-redirect channel-rejoin | No opcode signal |
+| A5/A6 | gateway | HandleMap / OpcodeBlacklist package globals | Refactor; low ROI |
+| — | group/guild | In-memory cache pointer-aliasing (stale `*GroupMember` after parent `Update`/`Delete`) | Cache redesign; needs ADR |
+| — | shared/events | Partial-Listen rollback only applied to consumer-gateway + consumer-group; the other consumer-*.go files have the same pattern unaddressed | Mechanical sweep; do when next touched |
+
