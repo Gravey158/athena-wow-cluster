@@ -16,6 +16,7 @@ import (
 	"github.com/walkline/ToCloud9/shared/events"
 	"github.com/walkline/ToCloud9/shared/wow"
 	"github.com/walkline/ToCloud9/shared/wow/guid"
+	"github.com/walkline/ToCloud9/apps/gateway/sockets"
 )
 
 type BattlegroundStatus uint8
@@ -223,7 +224,8 @@ func (s *GameSession) enterBattleground(ctx context.Context) error {
 			resp.Uint32(mapID)
 			s.gameSocket.Send(resp)
 		}
-		s.gameSocket.WriteChannel() <- p
+		// B9: select-wrapped so a dead gamesocket doesn't block the bg-flow.
+		sockets.SendOrCancel(s.ctx, s.gameSocket.WriteChannel(), p)
 		return true, nil
 	}); err != nil {
 		log.Err(err).Msg("failed to filter character login packets")

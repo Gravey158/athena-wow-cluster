@@ -12,6 +12,7 @@ import (
 	pbGroup "github.com/walkline/ToCloud9/gen/group/pb"
 	pbGuild "github.com/walkline/ToCloud9/gen/guilds/pb"
 	pbServ "github.com/walkline/ToCloud9/gen/servers-registry/pb"
+	"github.com/walkline/ToCloud9/apps/gateway/sockets"
 )
 
 type ChatType uint8
@@ -188,7 +189,8 @@ func (s *GameSession) HandleChatMessage(ctx context.Context, p *packet.Packet) e
 		}
 
 		if s.worldSocket != nil {
-			s.worldSocket.WriteChannel() <- p
+			// B9: select-wrapped forward.
+			sockets.SendOrCancel(ctx, s.worldSocket.WriteChannel(), p)
 		}
 	default:
 		s.logger.Debug().
@@ -196,7 +198,8 @@ func (s *GameSession) HandleChatMessage(ctx context.Context, p *packet.Packet) e
 			Uint32("language", lang).
 			Msg("HandleChatMessage - default case (msgType decimal), forwarding to worldserver")
 		if s.worldSocket != nil {
-			s.worldSocket.WriteChannel() <- p
+			// B9: select-wrapped forward.
+			sockets.SendOrCancel(ctx, s.worldSocket.WriteChannel(), p)
 		}
 	}
 

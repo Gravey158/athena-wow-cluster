@@ -9,6 +9,7 @@ import (
 	"github.com/walkline/ToCloud9/apps/gateway/packet"
 	pbChar "github.com/walkline/ToCloud9/gen/characters/pb"
 	pbServ "github.com/walkline/ToCloud9/gen/servers-registry/pb"
+	"github.com/walkline/ToCloud9/apps/gateway/sockets"
 )
 
 func (s *GameSession) CharactersList(ctx context.Context, p *packet.Packet) error {
@@ -121,7 +122,8 @@ func (s *GameSession) CreateCharacter(ctx context.Context, p *packet.Packet) err
 				if !open {
 					return
 				}
-				s.gameSocket.WriteChannel() <- p
+				// B9: select-wrapped so a slow/dead gamesocket doesn't block.
+				sockets.SendOrCancel(s.ctx, s.gameSocket.WriteChannel(), p)
 				if p.Opcode == packet.SMsgCharCreate {
 					socket.Close()
 					return
@@ -197,7 +199,8 @@ func (s *GameSession) DeleteCharacter(ctx context.Context, p *packet.Packet) err
 				if !open {
 					return
 				}
-				s.gameSocket.WriteChannel() <- p
+				// B9: select-wrapped so a slow/dead gamesocket doesn't block.
+				sockets.SendOrCancel(s.ctx, s.gameSocket.WriteChannel(), p)
 				if p.Opcode == packet.SMsgCharDelete {
 					socket.Close()
 					return

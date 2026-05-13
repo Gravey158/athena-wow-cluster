@@ -126,9 +126,12 @@ func (s *GameSocket) ListenAndProcess(ctx context.Context) error {
 					s.logger.Error().Err(err).Msg("can't send packet to the game client")
 				}
 			case <-s.ctx.Done():
-				if s.session == nil {
-					close(s.sendChan)
-				}
+				// B18: previously we did `close(s.sendChan)` from this receiver
+				// goroutine -- a send-after-close panic risk because writers
+				// (Send/SendPacket) didn't know about the close.
+				// Now: Send/SendPacket use SendOrCancel and bail on ctx.Done,
+				// so it's safe to just exit. GC will collect the unused chan
+				// once no goroutine holds a reference.
 				return
 			}
 		}
@@ -182,18 +185,19 @@ func (s *GameSocket) WriteChannel() chan<- *packet.Packet {
 	return s.sendChan
 }
 
-// Send sends writer to the game client
+// Send sends writer to the game client. Safe against session shutdown:
+// drops the packet rather than block forever if s.ctx is already canceled (B9).
 func (s *GameSocket) Send(p *packet.Writer) {
-	s.sendChan <- &packet.Packet{
+	sockets.SendOrCancel(s.ctx, s.sendChan, &packet.Packet{
 		Opcode: p.Opcode,
 		Size:   uint32(p.Payload.Len()),
 		Data:   p.Payload.Bytes(),
-	}
+	})
 }
 
-// SendPacket sends packet to the game client
+// SendPacket sends packet to the game client. Same safety guarantee as Send (B9).
 func (s *GameSocket) SendPacket(p *packet.Packet) {
-	s.sendChan <- p
+	sockets.SendOrCancel(s.ctx, s.sendChan, p)
 }
 
 // AuthSession handles CMsgAuthSession and creates session object that takes control over the packets.
@@ -388,7 +392,10 @@ func (s *GameSocket) processPacket(p *packet.Packet) error {
 			return s.AuthSession(p)
 		}
 	default:
-		s.readChan <- p
+		// B19: previously a raw `s.readChan <- p` blocking-send. If the
+		// session goroutine is dead or slow, the packet-reader goroutine
+		// would lock up the whole socket. SendOrCancel makes this fail-fast.
+		sockets.SendOrCancel(s.ctx, s.readChan, p)
 	}
 	return nil
 }

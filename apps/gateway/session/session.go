@@ -187,7 +187,9 @@ func (s *GameSession) HandlePackets(ctx context.Context) {
 			handler, found := HandleMap[p.Opcode]
 			if !found {
 				if s.worldSocket != nil {
-					s.worldSocket.WriteChannel() <- p
+					// B9: select-wrapped send so a dead worldsocket doesn't block
+					// the entire session-goroutine on otherwise-harmless forwards.
+					sockets.SendOrCancel(c, s.worldSocket.WriteChannel(), p)
 				}
 				break
 			}
@@ -220,7 +222,8 @@ func (s *GameSession) HandlePackets(ctx context.Context) {
 			handler, found := HandleMap[p.Opcode]
 			if !found {
 				if s.gameSocket != nil {
-					s.gameSocket.WriteChannel() <- p
+					// B9: see comment above.
+					sockets.SendOrCancel(c, s.gameSocket.WriteChannel(), p)
 				}
 				break
 			}
@@ -384,7 +387,8 @@ func (s *GameSession) ReadyForAccountDataTimes(ctx context.Context, p *packet.Pa
 func (s *GameSession) HandlePing(ctx context.Context, p *packet.Packet) error {
 	s.pingToWorldServerStarted = time.Now()
 	if s.worldSocket != nil {
-		s.worldSocket.WriteChannel() <- p
+		// B9: drop ping rather than block forever if worldsocket is dead.
+		sockets.SendOrCancel(ctx, s.worldSocket.WriteChannel(), p)
 	} else {
 		resp := packet.NewWriterWithSize(packet.SMsgPong, 4)
 		resp.Uint32(p.Reader().Uint32())
@@ -400,7 +404,8 @@ func (s *GameSession) InterceptPong(ctx context.Context, p *packet.Packet) error
 		Str("latency", time.Since(s.pingToWorldServerStarted).String()).
 		Msg("Latency with world server")
 
-	s.gameSocket.WriteChannel() <- p
+	// B9: select-wrapped.
+	sockets.SendOrCancel(ctx, s.gameSocket.WriteChannel(), p)
 	return nil
 }
 
@@ -469,7 +474,8 @@ func (s *GameSession) connectToGameServerWithAddress(ctx context.Context, charac
 			return nil, fmt.Errorf("world socket closed")
 		}
 		if p.Opcode != packet.SMsgAuthChallenge {
-			socket.WriteChannel() <- p
+			// B9: shutdown-safe forward back to socket.
+			sockets.SendOrCancel(ctx, socket.WriteChannel(), p)
 		}
 	case <-ctx.Done():
 		return nil, ctx.Err()
