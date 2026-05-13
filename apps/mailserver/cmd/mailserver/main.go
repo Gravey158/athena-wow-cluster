@@ -68,8 +68,14 @@ func main() {
 		time.Second*time.Duration(cfg.DefaultMailExpirationTimeSecs),
 	)
 
+	mainContext, mainCancel := context.WithCancel(context.Background())
+	defer mainCancel()
+
 	ticker := service.NewMailsCleanupTicker([]uint32{1}, time.Second*time.Duration(cfg.ExpiredMailsCleanupSecsDelay), mailService)
-	go ticker.Start(context.TODO())
+	// B37 fix: was context.TODO() which left the ticker running across
+	// SIGTERM. Now ctx-scoped; ticker exits cleanly when mainCancel
+	// fires from the signal handler below.
+	go ticker.Start(mainContext)
 
 	// grpc setup
 	lis, err := net.Listen("tcp4", ":"+cfg.Port)
@@ -93,6 +99,7 @@ func main() {
 		sig := <-sigCh
 		fmt.Println("")
 		log.Info().Msgf("🧨 Got signal %v, attempting graceful shutdown...", sig)
+		mainCancel() // B37: signal ticker (+ any other ctx-aware bg goroutine) to exit
 		grpcServer.GracefulStop()
 		wg.Done()
 	}()
