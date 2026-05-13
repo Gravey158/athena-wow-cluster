@@ -35,7 +35,12 @@ type QueuedGroup struct {
 }
 
 type PVPQueue interface {
-	AddQueuedGroup(g *QueuedGroup) error
+	// AddQueuedGroup queues a group and immediately tries to match it.
+	// ctx is propagated to the resulting DB lookups (BattlegroundsThatNeedPlayers,
+	// InviteGroups, SaveBattleground) inside the match loop. Previously
+	// AddQueuedGroup took no ctx and the queue did process(context.Background())
+	// internally -- discarding any caller deadline. (B45)
+	AddQueuedGroup(ctx context.Context, g *QueuedGroup) error
 	RemoveQueuedGroup(player guid.PlayerUnwrapped) error
 	RemoveAllQueuedGroups()
 
@@ -79,7 +84,7 @@ func (q *GenericBattlegroundQueue) GetQueueTypeID() battleground.QueueTypeID {
 	return q.QueueTypeID
 }
 
-func (q *GenericBattlegroundQueue) AddQueuedGroup(g *QueuedGroup) error {
+func (q *GenericBattlegroundQueue) AddQueuedGroup(ctx context.Context, g *QueuedGroup) error {
 	q.mut.Lock()
 
 	groupCopy := *g
@@ -91,7 +96,7 @@ func (q *GenericBattlegroundQueue) AddQueuedGroup(g *QueuedGroup) error {
 
 	q.mut.Unlock()
 
-	return q.process(context.Background())
+	return q.process(ctx)
 }
 
 func (q *GenericBattlegroundQueue) RemoveQueuedGroup(player guid.PlayerUnwrapped) error {
@@ -161,7 +166,7 @@ func (q *GenericBattlegroundQueue) process(ctx context.Context) error {
 		if freeSlotsAlliance > 0 {
 			groupsToInvite := q.findGroupsForGivenSlots(freeSlotsAlliance, battleground.TeamAlliance)
 			if len(groupsToInvite) > 0 {
-				q.inviteGroupsToBG(groupsToInvite, &bg, battleground.TeamAlliance)
+				q.inviteGroupsToBG(ctx, groupsToInvite, &bg, battleground.TeamAlliance)
 			}
 		}
 
@@ -169,13 +174,13 @@ func (q *GenericBattlegroundQueue) process(ctx context.Context) error {
 		if freeSlotsHorde > 0 {
 			groupsToInvite := q.findGroupsForGivenSlots(freeSlotsHorde, battleground.TeamHorde)
 			if len(groupsToInvite) > 0 {
-				q.inviteGroupsToBG(groupsToInvite, &bg, battleground.TeamHorde)
+				q.inviteGroupsToBG(ctx, groupsToInvite, &bg, battleground.TeamHorde)
 			}
 		}
 	}
 
 	// Try to create a new battleground
-	template := q.getBattlegroundTemplate()
+	template := q.getBattlegroundTemplate(ctx)
 	allianceGroup, hordeGroup := q.balancedGroups(int(template.MinPlayersPerTeam), int(template.MaxPlayersPerTeam))
 
 	// If not enough groups - do nothing.
@@ -183,7 +188,7 @@ func (q *GenericBattlegroundQueue) process(ctx context.Context) error {
 		return nil
 	}
 
-	err = q.battleGroundCreator.CreateBattleground(ctx, q.getBattlegroundTemplate(), q.QueueTypeID, BracketID(q.BracketID), q.RealmID, q.BattleGroupID, allianceGroup, hordeGroup)
+	err = q.battleGroundCreator.CreateBattleground(ctx, q.getBattlegroundTemplate(ctx), q.QueueTypeID, BracketID(q.BracketID), q.RealmID, q.BattleGroupID, allianceGroup, hordeGroup)
 	if err != nil {
 		return fmt.Errorf("failed to create battleground: %w", err)
 	}
@@ -326,8 +331,8 @@ func (q *GenericBattlegroundQueue) findGroupsForGivenSlots(slots uint8, team bat
 	return groups
 }
 
-func (q *GenericBattlegroundQueue) inviteGroupsToBG(groups []QueuedGroup, bg *battleground.Battleground, team battleground.PVPTeam) {
-	if err := q.battleGroundService.InviteGroups(context.Background(), groups, bg, team); err != nil {
+func (q *GenericBattlegroundQueue) inviteGroupsToBG(ctx context.Context, groups []QueuedGroup, bg *battleground.Battleground, team battleground.PVPTeam) {
+	if err := q.battleGroundService.InviteGroups(ctx, groups, bg, team); err != nil {
 		log.Err(err).Msg("failed to invite to existing bg")
 		return
 	}
@@ -348,9 +353,9 @@ func (q *GenericBattlegroundQueue) removeGroupFromQueue(group *QueuedGroup) {
 	delete(q.queuedGroups, group.LeaderGUID)
 }
 
-func (q *GenericBattlegroundQueue) getBattlegroundTemplate() repo.BattlegroundTemplate {
+func (q *GenericBattlegroundQueue) getBattlegroundTemplate(ctx context.Context) repo.BattlegroundTemplate {
 	// Use BattlegroundTypeID to make random queue work
-	return q.battleGroundService.TemplateForQueueTypeID(context.Background(), battleground.QueueTypeID(q.BattlegroundTypeID))
+	return q.battleGroundService.TemplateForQueueTypeID(ctx, battleground.QueueTypeID(q.BattlegroundTypeID))
 }
 
 func abs(x int) int {

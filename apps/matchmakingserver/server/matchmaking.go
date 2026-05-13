@@ -48,7 +48,7 @@ func (s *MatchmakingServer) RemovePlayerFromQueue(ctx context.Context, req *pb.R
 
 func (s *MatchmakingServer) BattlegroundQueueDataForPlayer(ctx context.Context, req *pb.BattlegroundQueueDataForPlayerRequest) (*pb.BattlegroundQueueDataForPlayerResponse, error) {
 	links := s.bgService.GetQueueOrBattlegroundLinkForPlayer(service.QueuesByRealmAndPlayerKey{
-		guid.PlayerUnwrapped{
+		PlayerUnwrapped: guid.PlayerUnwrapped{
 			RealmID: uint16(req.RealmID),
 			LowGUID: guid.LowType(req.PlayerGUID),
 		},

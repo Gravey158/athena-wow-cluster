@@ -30,7 +30,7 @@ func TestGenericBattlegroundQueue_AddQueuedGroup(t *testing.T) {
 		EnqueuedTime: time.Now(),
 	}
 
-	err := queue.AddQueuedGroup(group)
+	err := queue.AddQueuedGroup(context.Background(), group)
 	assert.NoError(t, err)
 	assert.NotNil(t, queue.QueuedGroupByPlayer(group.LeaderGUID))
 }
@@ -61,13 +61,13 @@ func TestGenericBattlegroundQueue_CreateBG(t *testing.T) {
 
 		return nil
 	}), repo.BattlegroundTemplate{TypeID: 1}, 1, 1, 1)
-	assert.NoError(t, queue.AddQueuedGroup(groupWithMembers(2, battleground.TeamAlliance)))
-	assert.NoError(t, queue.AddQueuedGroup(groupWithMembers(2, battleground.TeamAlliance)))
-	assert.NoError(t, queue.AddQueuedGroup(groupWithMembers(1, battleground.TeamAlliance)))
-	assert.NoError(t, queue.AddQueuedGroup(groupWithMembers(1, battleground.TeamAlliance)))
-	assert.NoError(t, queue.AddQueuedGroup(groupWithMembers(2, battleground.TeamHorde)))
-	assert.NoError(t, queue.AddQueuedGroup(groupWithMembers(2, battleground.TeamHorde)))
-	assert.NoError(t, queue.AddQueuedGroup(groupWithMembers(2, battleground.TeamHorde)))
+	assert.NoError(t, queue.AddQueuedGroup(context.Background(), groupWithMembers(2, battleground.TeamAlliance)))
+	assert.NoError(t, queue.AddQueuedGroup(context.Background(), groupWithMembers(2, battleground.TeamAlliance)))
+	assert.NoError(t, queue.AddQueuedGroup(context.Background(), groupWithMembers(1, battleground.TeamAlliance)))
+	assert.NoError(t, queue.AddQueuedGroup(context.Background(), groupWithMembers(1, battleground.TeamAlliance)))
+	assert.NoError(t, queue.AddQueuedGroup(context.Background(), groupWithMembers(2, battleground.TeamHorde)))
+	assert.NoError(t, queue.AddQueuedGroup(context.Background(), groupWithMembers(2, battleground.TeamHorde)))
+	assert.NoError(t, queue.AddQueuedGroup(context.Background(), groupWithMembers(2, battleground.TeamHorde)))
 
 	mockService.AssertExpectations(t)
 
@@ -122,10 +122,10 @@ func TestGenericBattlegroundQueue_FillInExistingBG(t *testing.T) {
 	queue := service.NewGenericBattlegroundQueue(mockService, nil, repo.BattlegroundTemplate{TypeID: 1}, 1, 1, 1)
 
 	// Shouldn't be invited, since enough alliance players
-	assert.NoError(t, queue.AddQueuedGroup(groupWithMembers(2, battleground.TeamAlliance)))
+	assert.NoError(t, queue.AddQueuedGroup(context.Background(), groupWithMembers(2, battleground.TeamAlliance)))
 
 	// Should invite, since 1 place for horde
-	assert.NoError(t, queue.AddQueuedGroup(groupThatShouldBeInvited))
+	assert.NoError(t, queue.AddQueuedGroup(context.Background(), groupThatShouldBeInvited))
 
 	mockService.AssertExpectations(t)
 }
@@ -145,7 +145,7 @@ func TestGenericBattlegroundQueue_RemoveQueuedGroup(t *testing.T) {
 		EnqueuedTime: time.Now(),
 	}
 
-	queue.AddQueuedGroup(group)
+	queue.AddQueuedGroup(context.Background(), group)
 	err := queue.RemoveQueuedGroup(group.LeaderGUID)
 	assert.NoError(t, err)
 	assert.Nil(t, queue.QueuedGroupByPlayer(group.LeaderGUID))
@@ -172,8 +172,8 @@ func TestGenericBattlegroundQueue_GetAllQueuedGroups(t *testing.T) {
 	group1 := &service.QueuedGroup{LeaderGUID: getGUID(1, 1), Members: []guid.PlayerUnwrapped{getGUID(1, 1)}, RealmID: 1, TeamID: battleground.TeamAlliance, EnqueuedTime: time.Now()}
 	group2 := &service.QueuedGroup{LeaderGUID: getGUID(1, 2), Members: []guid.PlayerUnwrapped{getGUID(1, 2)}, RealmID: 1, TeamID: battleground.TeamHorde, EnqueuedTime: time.Now()}
 
-	queue.AddQueuedGroup(group1)
-	queue.AddQueuedGroup(group2)
+	queue.AddQueuedGroup(context.Background(), group1)
+	queue.AddQueuedGroup(context.Background(), group2)
 
 	groups := queue.GetAllQueuedGroups()
 	assert.Len(t, groups, 2)

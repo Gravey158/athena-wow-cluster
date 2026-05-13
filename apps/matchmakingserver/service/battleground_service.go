@@ -321,7 +321,7 @@ func (s *battleGroundService) AddGroupToQueue(
 
 	slots := s.addQueueForGroupMembers(queue, group)
 
-	err = queue.AddQueuedGroup(group)
+	err = queue.AddQueuedGroup(ctx, group)
 	if err != nil {
 		s.removeQueueForGroupMembers(queue, group)
 		return fmt.Errorf("cannot add queue for bracket id %v and type id: %v: %w", bracketID, typeID, err)
@@ -396,7 +396,7 @@ func (s *battleGroundService) OnNoCrossRealmNodesAvailable() {
 					s.removeQueueForGroupMembers(queue, &group)
 
 					newQueue := battlegroupQueue[queueID][bracket]
-					err = newQueue.AddQueuedGroup(&group)
+					err = newQueue.AddQueuedGroup(s.ctx, &group)
 					if err != nil {
 						log.Error().Err(err).Msg("cannot add group to queue OnNoCrossRealmNodesAvailable")
 					}
@@ -441,7 +441,7 @@ func (s *battleGroundService) OnNoCrossRealmNodesUnAvailable() {
 					s.removeQueueForGroupMembers(queue, &group)
 
 					newQueue := realmQueues[queueID][bracket]
-					err = newQueue.AddQueuedGroup(&group)
+					err = newQueue.AddQueuedGroup(s.ctx, &group)
 					if err != nil {
 						log.Error().Err(err).Msg("cannot add group to queue OnNoCrossRealmNodesUnAvailable")
 					}

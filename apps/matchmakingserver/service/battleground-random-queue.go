@@ -24,9 +24,9 @@ func NewBattlegroundRandomQueue(service BattleGroundService, battleGroundCreator
 	return randomQ
 }
 
-func (b BattlegroundRandomQueue) AddQueuedGroup(g *QueuedGroup) error {
+func (b BattlegroundRandomQueue) AddQueuedGroup(ctx context.Context, g *QueuedGroup) error {
 	g.IsRandomQueue = true
-	return b.realQ.AddQueuedGroup(g)
+	return b.realQ.AddQueuedGroup(ctx, g)
 }
 
 func (b BattlegroundRandomQueue) RemoveQueuedGroup(player guid.PlayerUnwrapped) error {
