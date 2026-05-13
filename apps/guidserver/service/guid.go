@@ -87,7 +87,13 @@ func NewGuidService(ctx context.Context, mysql repo.MaxGuidProvider, redisStorag
 				return nil, err
 			}
 
-			err = redisStorage.SetMaxGuidForItems(ctx, realmID, max)
+			// B28 fix: copy-paste bug -- this was previously calling
+			// SetMaxGuidForItems with the instances max-guid value, which
+			// (1) silently overwrote the items max-guid in Redis with the
+			// instances value, and (2) left the instances max-guid at 0
+			// because no Set was called for instances. Result: potential
+			// GUID collisions between items and instance entries.
+			err = redisStorage.SetMaxGuidForInstances(ctx, realmID, max)
 			if err != nil {
 				return nil, err
 			}
@@ -272,6 +278,6 @@ func (g *guidServiceImpl) requestProcessor(requests <-chan guidsRequest, respons
 	}
 }
 
-func (g *guidServiceImpl) requestNewDiapason() {
-	time.Sleep(time.Second * 300)
-}
+// B29: removed unused requestNewDiapason() which was just `time.Sleep(300s)`.
+// Never called anywhere (verified by grep). Likely scaffolding left over from
+// development. Deleted.
