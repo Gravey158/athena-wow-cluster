@@ -88,7 +88,7 @@ func TestGameSocketForwardsPacketsToGameClient(t *testing.T) {
 
 // remove '_' to run benchmark
 func _TestBenchmarkPlayersCount(t *testing.T) {
-	useEncryption = false
+	// Encryption disabled via NewGameSocketWithoutEncryption in simulateOnePlayer (B17).
 
 	session.WorldSocketCreator = func(logger *zerolog.Logger, addr string) (sockets.Socket, error) {
 		q := connmock.NewDataQueue(
@@ -178,7 +178,7 @@ func simulateOnePlayer(t *testing.T, packetsReceivedLimit int) {
 	broadcaster.On("RegisterCharacter", mock.Anything).Return((<-chan eBroadcaster.Event)(make(chan eBroadcaster.Event)))
 	broadcaster.On("UnregisterCharacter", mock.Anything)
 
-	socket := NewGameSocket(m, accountRepoMock, session.GameSessionParams{
+	socket := NewGameSocketWithoutEncryption(m, accountRepoMock, session.GameSessionParams{
 		CharServiceClient:     charMock,
 		ServersRegistryClient: servRegistryMock,
 		ChatServiceClient:     nil,

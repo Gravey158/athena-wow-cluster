@@ -20,9 +20,6 @@ import (
 	"github.com/walkline/ToCloud9/shared/slices"
 )
 
-// useEncryption used to disable encryption during testing
-var useEncryption = true
-
 // GameSocket socket between game client and gateway
 type GameSocket struct {
 	logger zerolog.Logger
@@ -43,6 +40,11 @@ type GameSocket struct {
 
 	authSeed  []byte
 	accountID uint32
+
+	// useEncryption was previously a package-level var, set to false by tests.
+	// Now per-instance so concurrent tests don't trample each other and so
+	// production isn't exposed to a globally-mutable security flag (B17).
+	useEncryption bool
 }
 
 func NewGameSocket(
@@ -61,7 +63,23 @@ func NewGameSocket(
 		logger:        log.Logger,
 		accountRepo:   accountRepo,
 		sessionParams: params,
+		useEncryption: true,
+		// Default to Background so Send/SendPacket are safe before
+		// ListenAndProcess overrides ctx.
+		ctx: context.Background(),
 	}
+}
+
+// NewGameSocketWithoutEncryption is intended for tests only — bypasses the
+// SHA1 digest check + Arc4 stream init that AuthSession otherwise performs.
+func NewGameSocketWithoutEncryption(
+	c net.Conn,
+	accountRepo repo.AccountRepo,
+	params session.GameSessionParams,
+) sockets.Socket {
+	s := NewGameSocket(c, accountRepo, params).(*GameSocket)
+	s.useEncryption = false
+	return s
 }
 
 // Handshake sends handshake request
@@ -146,7 +164,12 @@ func (s *GameSocket) ListenAndProcess(ctx context.Context) error {
 
 // Close socket
 func (s *GameSocket) Close() {
-	_ = s.conn.Close() // do we need to handle this somehow?
+	if err := s.conn.Close(); err != nil {
+		// Don't escalate -- close errors are usually idempotency issues
+		// (already closed) or shutdown-races. But surface them at debug
+		// so they're visible in tracing if something breaks (B21).
+		s.logger.Debug().Err(err).Msg("game-socket close returned error")
+	}
 }
 
 // ReadChannel returns channel with packets from game client
@@ -202,12 +225,12 @@ func (s *GameSocket) AuthSession(p *packet.Packet) error {
 		return fmt.Errorf("can't process AuthSession, err: %w", reader.Error())
 	}
 
-	accountObj, err := s.accountRepo.AccountByUserName(context.TODO(), account)
+	accountObj, err := s.accountRepo.AccountByUserName(s.ctx, account)
 	if err != nil {
 		return err
 	}
 
-	if useEncryption {
+	if s.useEncryption {
 		t := []byte{0, 0, 0, 0}
 		ourDigest := sha1.Sum(slices.AppendBytes([]byte(account), t, localChallenge, s.authSeed, accountObj.SessionKeyAuth))
 		if !slices.SameBytes(ourDigest[:], theirDigest) {
@@ -218,7 +241,7 @@ func (s *GameSocket) AuthSession(p *packet.Packet) error {
 	s.accountID = accountObj.ID
 	s.logger = s.logger.With().Uint32("account", accountObj.ID).Logger()
 
-	if useEncryption {
+	if s.useEncryption {
 		var err error
 		s.encryption, err = crypto.NewArc(accountObj.SessionKeyAuth)
 		if err != nil {
